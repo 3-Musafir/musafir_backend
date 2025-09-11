@@ -1,7 +1,7 @@
 import mongoose, { Model } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as csv from 'csv-parser';
+import csv from 'csv-parser';
 import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { UserSchema } from 'src/user/schemas/user.schema';

@@ -1,20 +1,92 @@
 import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { join } from 'path/win32';
+import * as fs from 'fs';
+import * as handlebars from 'handlebars';
+import brevo, {
+  TransactionalEmailsApi,
+  SendSmtpEmail,
+  TransactionalEmailsApiApiKeys
+  // ApiClient,
+} from '@getbrevo/brevo';
 
 @Injectable()
 export class MailService {
-  constructor(private mailerService: MailerService) {}
+  private readonly logger = new Logger(MailService.name);
+  private readonly brevoClient: brevo.TransactionalEmailsApi;
+  private readonly templatesDir: string;
+
+  constructor() {
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    if (!brevoApiKey) {
+      throw new Error('BREVO_API_KEY is not set in environment variables');
+    }
+
+    const apiInstance = new TransactionalEmailsApi();
+
+    apiInstance.setApiKey(
+      TransactionalEmailsApiApiKeys.apiKey,
+      brevoApiKey
+    );
+
+    this.brevoClient = apiInstance;
+
+    this.templatesDir =
+      process.env.NODE_ENV === 'production'
+        ? join(process.cwd(), 'dist', 'mail', 'templates')
+        : join(process.cwd(), 'src', 'mail', 'templates');
+  }
+
+
+  private renderTemplate(templateName: string, context: Record<string, any>): string {
+    const templatePath = join(this.templatesDir, `${templateName}.hbs`);
+
+    if (!fs.existsSync(templatePath)) {
+      throw new Error(`Email template "${templateName}" not found at ${templatePath}`);
+    }
+
+    const templateSource = fs.readFileSync(templatePath, 'utf8');
+    const compiledTemplate = handlebars.compile(templateSource);
+    return compiledTemplate(context);
+  }
+
+
+  async sendMail(
+    to: string,
+    subject: string,
+    templateName: string,
+    context: Record<string, any>,
+  ) {
+    try {
+      const htmlContent = this.renderTemplate(templateName, context);
+
+      const email = new SendSmtpEmail();
+      email.subject = subject;
+      email.htmlContent = htmlContent;
+      email.sender = { email: process.env.BREVO_FROM };
+      email.to = [{ email: to }];
+
+      const response = await this.brevoClient.sendTransacEmail(email);
+      this.logger.log(`✅ Email sent successfully to ${to}`);
+    } catch (error: any) {
+      this.logger.error(`❌ Failed to send email to ${to}: ${error.message}`, error.stack);
+      if (error.response?.body) {
+        this.logger.error(`Brevo API response: ${JSON.stringify(error.response.body)}`);
+      }
+      throw error;
+    }
+  }
 
   async sendEmailVerification(emailto: string, password: string) {
     try {
-      await this.mailerService.sendMail({
-        to: emailto,
-        subject: 'Verify Your 3Musafir Account',
-        template: 'email-confirmation',
-        context: {
+      await this.sendMail(
+        emailto,
+        'Verify Your 3Musafir Account',
+        'email-confirmation',
+        {
           password: password,
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log(error);
@@ -31,11 +103,11 @@ export class MailService {
     city: string,
   ) {
     try {
-      await this.mailerService.sendMail({
-        to: process.env.JURY_EMAIL,
-        subject: 'Re-Evaluate Request to Jury',
-        template: './askJuryToReEvaluate',
-        context: {
+      await this.sendMail(
+        process.env.JURY_EMAIL,
+        'Re-Evaluate Request to Jury',
+        './askJuryToReEvaluate',
+        {
           registrationId: registrationId,
           flagshipName: flagshipName,
           name: name,
@@ -43,7 +115,7 @@ export class MailService {
           musafirNumber: musafirNumber,
           city: city,
         },
-      });
+      );
     } catch (error) {
       return error;
     }
@@ -59,11 +131,11 @@ export class MailService {
     tripQuery: string,
   ) {
     try {
-      await this.mailerService.sendMail({
-        to: process.env.JURY_EMAIL,
-        subject: 'Trip Query',
-        template: './tripQuery',
-        context: {
+      await this.sendMail(
+        process.env.JURY_EMAIL,
+        'Trip Query',
+        './tripQuery',
+        {
           flagshipId: flagshipId,
           flagshipName: flagshipName,
           name: name,
@@ -72,7 +144,7 @@ export class MailService {
           city: city,
           tripQuery: tripQuery,
         },
-      });
+      );
     } catch (error) {
       return error;
     }
@@ -84,15 +156,15 @@ export class MailService {
     userName: string,
   ) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Reset Your 3Musafir Password',
-        template: './password-reset',
-        context: {
+      await this.sendMail(
+        email,
+        'Reset Your 3Musafir Password',
+        './password-reset',
+        {
           resetLink: resetLink,
           userName: userName,
         },
-      });
+      );
     } catch (error) {
       return error;
     }
@@ -100,15 +172,15 @@ export class MailService {
 
   async sendAccountCreatedEmail(email: string, firstName: string, loginUrl: string) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Your 3M account is ready',
-        template: './account-created',
-        context: {
+      await this.sendMail(
+        email,
+        'Your 3M account is ready',
+        './account-created',
+        {
           firstName,
           loginUrl,
         },
-      });
+      );
     } catch (error) {
       console.log(error);
       return error;
@@ -117,14 +189,14 @@ export class MailService {
 
   async sendVerificationApprovedEmail(email: string, fullName: string) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Your 3Musafir Account Has Been Verified',
-        template: './verification-approved',
-        context: {
+      await this.sendMail(
+        email,
+        'Your 3Musafir Account Has Been Verified',
+        './verification-approved',
+        {
           fullName: fullName,
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log('Error sending verification approved email:', error);
@@ -134,14 +206,14 @@ export class MailService {
 
   async sendVerificationRejectedEmail(email: string, fullName: string) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Your 3Musafir Account Verification Status',
-        template: './verification-rejected',
-        context: {
+      await this.sendMail(
+        email,
+        'Your 3Musafir Account Verification Status',
+        './verification-rejected',
+        {
           fullName: fullName,
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log('Error sending verification rejected email:', error);
@@ -150,18 +222,18 @@ export class MailService {
   }
 
   async sendPaymentApprovedEmail(
-    email: string, 
-    fullName: string, 
-    amount: number, 
-    tripName: string, 
+    email: string,
+    fullName: string,
+    amount: number,
+    tripName: string,
     paymentDate: Date
   ) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Your 3Musafir Payment Has Been Approved',
-        template: './payment-approved',
-        context: {
+      await this.sendMail(
+        email,
+        'Your 3Musafir Payment Has Been Approved',
+        './payment-approved',
+        {
           fullName: fullName,
           amount: amount,
           tripName: tripName,
@@ -171,7 +243,7 @@ export class MailService {
             day: 'numeric'
           }),
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log('Error sending payment approved email:', error);
@@ -180,24 +252,24 @@ export class MailService {
   }
 
   async sendPaymentRejectedEmail(
-    email: string, 
-    fullName: string, 
-    amount: number, 
-    tripName: string, 
+    email: string,
+    fullName: string,
+    amount: number,
+    tripName: string,
     reason?: string
   ) {
     try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Your 3Musafir Payment Was Not Approved',
-        template: './payment-rejected',
-        context: {
+      await this.sendMail(
+        email,
+        'Your 3Musafir Payment Was Not Approved',
+        './payment-rejected',
+        {
           fullName: fullName,
           amount: amount,
           tripName: tripName,
           reason: reason || 'Please ensure all payment details are correct and the screenshot is clear.',
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log('Error sending payment rejected email:', error);
@@ -232,18 +304,18 @@ export class MailService {
       const formatDate = (d?: Date | string) =>
         d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined;
 
-      await this.mailerService.sendMail({
-        to: process.env.JURY_EMAIL,
-        subject: 'New Trip Registration Submitted',
-        template: './admin-registration-notification',
-        context: {
+      await this.sendMail(
+        process.env.JURY_EMAIL,
+        'New Trip Registration Submitted',
+        './admin-registration-notification',
+        {
           ...context,
           createdAt: formatDate(context.createdAt),
           startDate: formatDate(context.startDate),
           endDate: formatDate(context.endDate),
           groupMembers: context.groupMembers && context.groupMembers.length ? context.groupMembers : undefined,
         },
-      });
+      );
       return true;
     } catch (error) {
       console.log('Error sending admin registration notification:', error);

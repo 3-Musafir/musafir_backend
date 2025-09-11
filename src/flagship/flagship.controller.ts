@@ -223,6 +223,15 @@ export class FlagshipController {
     return this.flagshipService.rejectRegisteration(id, comment);
   }
 
+  @Patch('didnt-pick/:registerationID')
+  // @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "mark registration as didntPick" })
+  @ApiOkResponse({})
+  didntPickRegistration(@Param('registerationID') id: string, @Body('comment') comment: string) {
+    return this.flagshipService.didntPickRegistration(id, comment);
+  }
+
   @Patch('verify-user/:userID')
   // @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)

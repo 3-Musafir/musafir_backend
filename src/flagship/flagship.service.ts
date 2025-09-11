@@ -17,7 +17,7 @@ import { RegistrationService } from 'src/registration/registration.service';
 import { MailService } from 'src/mail/mail.service';
 import { successResponse, errorResponse } from '../constants/response';
 import { StorageService } from 'src/storage/storageService';
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 
 @Injectable()
 export class FlagshipService {
@@ -31,7 +31,7 @@ export class FlagshipService {
     private readonly registerationModel: Model<Registration>,
     @InjectModel('Payment')
     private readonly paymentModel: Model<Payment>,
-  ) {}
+  ) { }
 
   async create(createFlagshipDto: CreateFlagshipDto): Promise<Flagship> {
     const startDate = dayjs(createFlagshipDto.startDate);
@@ -525,9 +525,26 @@ export class FlagshipService {
     return updatedRegistration;
   }
 
-  async verifyUser(id: string, comment: string) {}
+  async didntPickRegistration(id: string, comment: string) {
+    const updatedRegistration = await this.registerationModel.findByIdAndUpdate(
+      id,
+      {
+        status: 'didntPick',
+        comment: comment,
+      },
+      { new: true },
+    );
 
-  async rejectVerification(id: string, comment: string) {}
+    if (!updatedRegistration) {
+      throw new NotFoundException(`Registration with ID ${id} not found`);
+    }
+
+    return updatedRegistration;
+  }
+
+  async verifyUser(id: string, comment: string) { }
+
+  async rejectVerification(id: string, comment: string) { }
 
   async getPastTrips() {
     const currentDate = new Date();

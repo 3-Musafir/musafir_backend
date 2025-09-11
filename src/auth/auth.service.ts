@@ -4,7 +4,7 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import * as Cryptr from 'cryptr';
+import Cryptr from 'cryptr';
 import { Request } from 'express';
 import { sign, verify } from 'jsonwebtoken';
 import { Model } from 'mongoose';
