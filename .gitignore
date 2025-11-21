@@ -1,5 +1,38 @@
 
 
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor and tooling cruft
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.iml
+*.sw?
+*.orig
+.history/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
 # temporary files which can be created if a process still has a handle open of a deleted file
 .fuse_hidden*
 
@@ -78,9 +111,6 @@ typings/
 .yarn-integrity
 
 # dotenv environment variables file
-.env
-.env.test
-
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 
@@ -106,6 +136,3 @@ typings/
 dist/
 
 uploads
-
-# Vs code configurations
-.vscode
