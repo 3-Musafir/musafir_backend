@@ -56,7 +56,7 @@ export class FlagshipController {
     @Body() createFlagshipDto: CreateFlagshipDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    createFlagshipDto.created_By = req.user._id as string;
+    createFlagshipDto.created_By = req.user._id.toString();
     const flagShip = await this.flagshipService.create(createFlagshipDto);
     return successResponse(flagShip, 'Flagship Created', 201);
   }

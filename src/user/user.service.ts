@@ -1,34 +1,32 @@
 import {
-  ResetPasswordDto,
-  JwtResetPasswordDto,
-} from './dto/reset-password.dto';
-import { Request } from 'express';
-import { AuthService } from './../auth/auth.service';
-import { MailService } from './../mail/mail.service';
-import { LoginUserDto } from './dto/login-user.dto';
-import {
-  Injectable,
   BadRequestException,
-  NotFoundException,
   ConflictException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { v4 } from 'uuid';
-import { addHours } from 'date-fns';
 import * as bcrypt from 'bcrypt';
+import { ObjectId } from 'bson';
+import { addHours } from 'date-fns';
+import { Request } from 'express';
+import * as jwt from 'jsonwebtoken';
+import { Model } from 'mongoose';
+import { generateRandomPassword, generateUniqueCode } from 'src/util';
+import { v4 } from 'uuid';
+import { Registration } from '../registration/interfaces/registration.interface';
+import { StorageService } from '../storage/storageService';
+import { AuthService } from './../auth/auth.service';
+import { MailService } from './../mail/mail.service';
 import { CreateForgotPasswordDto } from './dto/create-forgot-password.dto';
 import { CreateGoogleUserDto, EmailUserDto } from './dto/create-user.dto';
-import { VerifyUuidDto } from './dto/verify-uuid.dto';
+import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshAccessTokenDto } from './dto/refresh-access-token.dto';
-import { ForgotPassword } from './interfaces/forgot-password.interface';
-import { User } from './interfaces/user.interface';
-import { ObjectId } from 'bson';
-import { generateRandomPassword, generateUniqueCode } from 'src/util';
+import {
+  JwtResetPasswordDto,
+  ResetPasswordDto,
+} from './dto/reset-password.dto';
 import { VerifyUserDto } from './dto/verify-user.dto';
-import { StorageService } from '../storage/storageService';
-import * as jwt from 'jsonwebtoken';
-import { Registration } from '../registration/interfaces/registration.interface';
+import { User, UserDocument } from './interfaces/user.interface';
 
 @Injectable()
 export class UserService {
@@ -36,7 +34,7 @@ export class UserService {
   LOGIN_ATTEMPTS_TO_BLOCK = 5;
 
   constructor(
-    @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('User') private readonly userModel: Model<UserDocument>,
     @InjectModel('Registration') private readonly registrationModel: Model<Registration>,
     private readonly mailService: MailService,
     private readonly authService: AuthService,
@@ -115,7 +113,7 @@ export class UserService {
   async verifyEmail(req: Request, password: string, verificationId: string) {
     const user = await this.findByVerification(verificationId);
     await this.checkPassword(password, user);
-    await this.setUserAsVerified(user);
+    await this.setUserAsVerified(user as UserDocument);
     // Send account created notification after password is set and email is verified
     if (user.email && password) {
       const firstName = user.fullName?.split(' ')[0] || 'User';
@@ -608,7 +606,7 @@ export class UserService {
     return user;
   }
 
-  private async setUserAsVerified(user: User) {
+  private async setUserAsVerified(user: UserDocument) {
     user.emailVerified = true;
     await user.save();
   }

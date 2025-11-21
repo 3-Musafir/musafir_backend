@@ -164,7 +164,7 @@ export class UserController {
           verifyDto.referral2,
         );
         if (user1 && user2) {
-          await this.userService.setUserVerified(user._id as string, verifyDto);
+          await this.userService.setUserVerified(user._id.toString(), verifyDto);
         }
         return successResponse({}, 'User verified successfully', 200);
       }
@@ -172,14 +172,14 @@ export class UserController {
       if (video) {
         const videoUrl = await this.userService.uploadVerificationVideo(
           video,
-          user._id as string,
+          user._id.toString(),
         );
         return successResponse(videoUrl, 'Video uploaded successfully', 200);
       }
 
       if (verifyDto.videoUrl || verifyDto.requestCall || video) {
         const res = await this.userService.requestVerification(
-          user._id as string,
+          user._id.toString(),
           verifyDto,
         );
         return successResponse(res, 'Verification Requested', 200);
@@ -237,7 +237,7 @@ export class UserController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     try {
-      const updatedUser = await this.userService.updateUser(user._id, updateUserDto);
+      const updatedUser = await this.userService.updateUser(user._id.toString(), updateUserDto);
       return successResponse(updatedUser, 'User updated successfully', 200);
     } catch (error) {
       return errorResponse(error);

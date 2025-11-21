@@ -1,6 +1,6 @@
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
-interface VerificationSubSchema {
+export interface VerificationSubSchema {
   verificationID?: string;
   encodedVideo?: string;
   referralIDs?: string[];
@@ -12,8 +12,8 @@ interface VerificationSubSchema {
   RequestCall: boolean;
 }
 
-export interface User extends Document {
-  _id: string;
+export interface User {
+  _id: Types.ObjectId; // or Types.ObjectId | string if you sometimes string-ify it
   fullName: string;
   email?: string;
   password?: string;
@@ -28,9 +28,12 @@ export interface User extends Document {
   working?: boolean;
   city?: string;
   heardFrom?: string;
-  roles: [string];
+  roles: string[]; // this should be an array, not a tuple
   emailVerified: boolean;
   verification?: VerificationSubSchema;
   discountApplicable?: number;
   numberOfFlagshipsAttended?: number;
 }
+
+// When dealing with actual Mongoose documents:
+export type UserDocument = User & Document;

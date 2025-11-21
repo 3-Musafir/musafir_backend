@@ -34,7 +34,7 @@
     "@nestjs/mongoose": "^10.1.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
-    "@nestjs/swagger": "^11.2.3",
+    "@nestjs/swagger": "^7.2.4",
     "@sendgrid/mail": "^8.1.5",
     "@supabase/storage-js": "^2.7.1",
     "@types/bcrypt": "^5.0.2",

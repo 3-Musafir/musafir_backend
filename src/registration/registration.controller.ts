@@ -31,7 +31,10 @@ export class RegistrationController {
         @GetUser() user: User,
         @Body() createRegistrationDto: CreateRegistrationDto,
     ) {
-        return this.registrationService.createRegistration(createRegistrationDto, user._id);
+        return this.registrationService.createRegistration(
+            createRegistrationDto,
+            user._id.toString(),
+          );
     }
 
     @UseGuards(JwtAuthGuard)
@@ -42,7 +45,7 @@ export class RegistrationController {
         return {
             statusCode: 200,
             message: "Past passport fetched successfully",
-            data: await this.registrationService.getPastPassport(user._id)
+            data: await this.registrationService.getPastPassport(user._id.toString())
         }
     }
 
@@ -54,7 +57,7 @@ export class RegistrationController {
         return {
             statusCode: 200,
             message: "Upcoming passport fetched successfully",
-            data: await this.registrationService.getUpcomingPassport(user._id)
+            data: await this.registrationService.getUpcomingPassport(user._id.toString())
         }
     }
 
