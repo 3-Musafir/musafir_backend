@@ -1,6 +1,6 @@
 import { MailerService } from '@nestjs-modules/mailer';
 import { Injectable, Logger } from '@nestjs/common';
-import { join } from 'path/win32';
+import { join } from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
 import brevo, {
