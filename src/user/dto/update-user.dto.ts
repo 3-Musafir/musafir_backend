@@ -2,6 +2,8 @@ import {
   IsNotEmpty,
   IsString,
   IsOptional,
+  Length,
+  IsNumberString,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -24,6 +26,8 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsString()
+  @IsNumberString()
+  @Length(10, 10, { message: 'Phone must be exactly 10 digits' })
   readonly phone?: string;
 
   @ApiProperty({
@@ -33,5 +37,6 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsString()
+  @Length(13, 13, { message: 'CNIC must be exactly 13 digits' })
   readonly cnic?: string;
 }
