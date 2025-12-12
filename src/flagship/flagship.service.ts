@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -252,24 +253,27 @@ export class FlagshipService {
   }
 
   async sendTripQuery(tripQuery: string, flagshipId: string, user: User) {
-    try {
-      const flagship = await this.flagshipModel.findById(flagshipId);
-      if (!flagship) {
-        throw new NotFoundException(`Flagship with ID ${flagshipId} not found`);
-      }
-      await this.mailService.sendTripQuery(
-        flagshipId,
-        flagship.tripName,
-        user.fullName,
-        user.email,
-        user.phone,
-        user?.city,
-        tripQuery,
-      );
-      return 'Trip query sent successfully.';
-    } catch (error) {
-      throw new Error(`Failed to send trip query: ${error.message}`);
+    const flagship = await this.flagshipModel.findById(flagshipId);
+    if (!flagship) {
+      throw new NotFoundException(`Flagship with ID ${flagshipId} not found`);
     }
+
+    const sent = await this.mailService.sendTripQuery(
+      flagshipId,
+      flagship.tripName,
+      user.fullName,
+      user.email,
+      user.phone,
+      user?.city,
+      tripQuery,
+    );
+
+    if (sent !== true) {
+      // Defensive: mail service should throw on failure, but don't report success if it doesn't.
+      throw new InternalServerErrorException('Failed to send trip query');
+    }
+
+    return 'Trip query sent successfully.';
   }
 
   // TODOS

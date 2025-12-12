@@ -50,7 +50,7 @@ export class UserService {
     await this.isEmailUnique(user.email);
     user.referralID = generateUniqueCode();
     user.verification.verificationID = v4();
-    user.verification.status = 'unverified';
+    user.verification.status = 'unverified'; // @TODO: Make these statuses enum in constants file
     const password = createUserDto.password;
     await this.mailService.sendEmailVerification(user.email, password);
     const savedUser = await user.save();

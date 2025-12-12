@@ -36,6 +36,7 @@ import { Flagship } from './interfaces/flagship.interface';
 import { GetUser } from 'src/auth/decorators/user.decorator';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { User } from 'src/user/interfaces/user.interface';
+import { TripQueryDto } from './dto/trip-query.dto';
 
 @ApiTags('Flagship')
 @Controller('flagship')
@@ -131,11 +132,15 @@ export class FlagshipController {
   @Post('/tripQuery')
   async sendTripQuery(
     @GetUser() user: User,
-    @Body() tripQuery: any,
+    @Body() tripQuery: TripQueryDto,
   ) {
     return {
       statusCode: 200,
-      message: await this.flagshipService.sendTripQuery(tripQuery.query, tripQuery.flagshipId, user),
+      message: await this.flagshipService.sendTripQuery(
+        tripQuery.query,
+        tripQuery.flagshipId,
+        user,
+      ),
     }
   }
 

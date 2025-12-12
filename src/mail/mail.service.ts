@@ -1,5 +1,5 @@
 import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
@@ -58,12 +58,21 @@ export class MailService {
     context: Record<string, any>,
   ) {
     try {
+      if (!to) {
+        throw new BadRequestException('Recipient email (to) is required');
+      }
+      if (!process.env.MUSAFIR_MAIL) {
+        throw new BadRequestException(
+          'MUSAFIR_MAIL is not set in environment variables',
+        );
+      }
+
       const htmlContent = this.renderTemplate(templateName, context);
 
       const email = new SendSmtpEmail();
       email.subject = subject;
       email.htmlContent = htmlContent;
-      email.sender = { email: process.env.BREVO_FROM };
+      email.sender = { email: process.env.MUSAFIR_MAIL };
       email.to = [{ email: to }];
 
       const response = await this.brevoClient.sendTransacEmail(email);
@@ -104,7 +113,7 @@ export class MailService {
   ) {
     try {
       await this.sendMail(
-        process.env.JURY_EMAIL,
+        process.env.MUSAFIR_MAIL,
         'Re-Evaluate Request to Jury',
         './askJuryToReEvaluate',
         {
@@ -130,24 +139,23 @@ export class MailService {
     city: string,
     tripQuery: string,
   ) {
-    try {
-      await this.sendMail(
-        process.env.JURY_EMAIL,
-        'Trip Query',
-        './tripQuery',
-        {
-          flagshipId: flagshipId,
-          flagshipName: flagshipName,
-          name: name,
-          email: email,
-          musafirNumber: musafirNumber,
-          city: city,
-          tripQuery: tripQuery,
-        },
+    if (!process.env.MUSAFIR_MAIL) {
+      throw new BadRequestException(
+        'From Email is not set in environment variables',
       );
-    } catch (error) {
-      return error;
     }
+
+    await this.sendMail(process.env.MUSAFIR_MAIL, 'Trip Query', './tripQuery', {
+      flagshipId: flagshipId,
+      flagshipName: flagshipName,
+      name: name,
+      email: email,
+      musafirNumber: musafirNumber,
+      city: city,
+      tripQuery: tripQuery,
+    });
+
+    return true;
   }
 
   async sendPasswordResetEmail(
@@ -305,7 +313,7 @@ export class MailService {
         d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined;
 
       await this.sendMail(
-        process.env.JURY_EMAIL,
+        process.env.MUSAFIR_MAIL,
         'New Trip Registration Submitted',
         './admin-registration-notification',
         {
