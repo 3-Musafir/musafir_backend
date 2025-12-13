@@ -1,6 +1,6 @@
+import * as bcrypt from 'bcrypt';
 import { Schema } from 'mongoose';
 import * as validator from 'validator';
-import * as bcrypt from 'bcrypt';
 
 function transformValue(doc, ret: { [key: string]: any }) {
   delete ret.password;
@@ -62,7 +62,7 @@ export const UserSchema = new Schema(
 
     googleId: { type: String, required: false },
 
-    phone: { type: String, required: false },
+    phone: { type: String, required: true },
 
     referralID: { type: String, required: true },
 

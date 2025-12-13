@@ -21,6 +21,43 @@ export class RegistrationService {
     private readonly mailService: MailService,
   ) { }
 
+  private async syncCompletedRegistrationsForUser(userId: string): Promise<void> {
+    const now = new Date();
+
+    // Registrations are marked "confirmed" when payment is approved.
+    // Once the trip has ended, we treat them as "completed".
+    const confirmedRegs = await this.registrationModel
+      .find({ userId, status: 'confirmed' })
+      .populate('flagship')
+      .exec();
+
+    const toCompleteIds = confirmedRegs
+      .filter((r: any) => {
+        const endDate = r?.flagship?.endDate;
+        return endDate && new Date(endDate) < now;
+      })
+      .map((r) => r._id);
+
+    if (toCompleteIds.length > 0) {
+      await this.registrationModel.updateMany(
+        { _id: { $in: toCompleteIds } },
+        { $set: { status: 'completed' } },
+      );
+    }
+  }
+
+  private async updateUserTripStats(userId: string): Promise<void> {
+    const attendedCount = await this.registrationModel.countDocuments({
+      userId,
+      status: 'completed',
+    });
+
+    await this.userModel.findByIdAndUpdate(userId, {
+      numberOfFlagshipsAttended: attendedCount,
+      discountApplicable: attendedCount * 500,
+    });
+  }
+
   async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<{ registrationId: string, message: string }> {
     try {
       const user = await this.userModel.findById(userId);
@@ -94,6 +131,10 @@ export class RegistrationService {
 
   async getPastPassport(userId: string) {
     try {
+      // Keep status + user stats in sync before returning passport data
+      await this.syncCompletedRegistrationsForUser(userId);
+      await this.updateUserTripStats(userId);
+
       return await this.registrationModel.find({
         status: { $in: ["completed", "refunded"] },
         userId: userId
@@ -108,6 +149,10 @@ export class RegistrationService {
 
   async getUpcomingPassport(userId: string) {
     try {
+      // Keep status + user stats in sync before returning passport data
+      await this.syncCompletedRegistrationsForUser(userId);
+      await this.updateUserTripStats(userId);
+
       const registrations = await this.registrationModel.find({
         status: { $nin: ["completed", "refunded"] },
         userId: userId

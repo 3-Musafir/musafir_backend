@@ -33,6 +33,18 @@ export class PaymentService {
     private readonly mailService: MailService,
   ) { }
 
+  private async updateUserTripStats(userId: string): Promise<void> {
+    const attendedCount = await this.registrationModel.countDocuments({
+      userId,
+      status: 'completed',
+    });
+
+    await this.user.findByIdAndUpdate(userId, {
+      numberOfFlagshipsAttended: attendedCount,
+      discountApplicable: attendedCount * 500,
+    });
+  }
+
   async getBankAccounts(): Promise<BankAccount[]> {
     return this.bankAccountModel.find();
   }
@@ -96,15 +108,20 @@ export class PaymentService {
       // Get all completed registrations for the user
       const completedRegistrations = await this.registrationModel.find({
         userId: userId,
-        status: { $in: ['completed', 'refunded'] }
+        status: 'completed',
       }).exec();
 
-      // Calculate discount: 500 per completed trip, capped at 3000
+      // Calculate discount: 500 per completed trip
       const discountPerTrip = 500;
-      const maxDiscount = 3000;
       const calculatedDiscount = completedRegistrations.length * discountPerTrip;
 
-      return Math.min(calculatedDiscount, maxDiscount);
+      // Persist onto the user document as well
+      await this.user.findByIdAndUpdate(userId, {
+        numberOfFlagshipsAttended: completedRegistrations.length,
+        discountApplicable: calculatedDiscount,
+      });
+
+      return calculatedDiscount;
     } catch (error) {
       console.error('Error calculating user discount:', error);
       return 0;
@@ -306,10 +323,53 @@ export class PaymentService {
   }
 
   async approveRefund(id: string): Promise<Refund> {
-    return this.refundModel.findByIdAndUpdate(id, { status: 'cleared' });
+    const refund = await this.refundModel.findByIdAndUpdate(
+      id,
+      { status: 'cleared' },
+      { new: true },
+    );
+
+    if (refund?.registration) {
+      const registration = await this.registrationModel
+        .findById(refund.registration)
+        .exec();
+
+      if (registration) {
+        await this.registrationModel.findByIdAndUpdate(registration._id, {
+          status: 'refunded',
+        });
+
+        await this.updateUserTripStats(String(registration.userId));
+      }
+    }
+
+    return refund;
   }
 
   async rejectRefund(id: string): Promise<Refund> {
-    return this.refundModel.findByIdAndUpdate(id, { status: 'rejected' });
+    const refund = await this.refundModel.findByIdAndUpdate(
+      id,
+      { status: 'rejected' },
+      { new: true },
+    );
+
+    if (refund?.registration) {
+      const registration = await this.registrationModel
+        .findById(refund.registration)
+        .exec();
+
+      // If refund was rejected, bring the registration back from refundProcessing to confirmed.
+      if (registration?.status === 'refundProcessing') {
+        await this.registrationModel.findByIdAndUpdate(registration._id, {
+          status: 'confirmed',
+        });
+      }
+
+      if (registration?.userId) {
+        await this.updateUserTripStats(String(registration.userId));
+      }
+    }
+
+    return refund;
   }
 }
