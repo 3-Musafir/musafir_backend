@@ -143,12 +143,54 @@ export class UserService {
 
   // Find user by email or phone
   async findUserByEmailOrPhone(emailOrPhone: string) {
-    const user = await this.userModel.findOne({
-      $or: [
-        { email: emailOrPhone.toLowerCase() },
-        { phone: emailOrPhone }
-      ]
-    });
+    const raw = (emailOrPhone || '').trim();
+    if (!raw) {
+      throw new BadRequestException('emailOrPhone is required');
+    }
+
+    const isEmail = raw.includes('@');
+    const lower = raw.toLowerCase();
+
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const digitsOnly = (s: string) => s.replace(/\D/g, '');
+
+    let user: any = null;
+
+    if (isEmail) {
+      user = await this.userModel.findOne({ email: lower });
+    } else {
+      // 1) Exact phone match first
+      user = await this.userModel.findOne({ phone: raw });
+
+      // 2) Fallback: match by last 7 digits (e.g. +923444225504 => 4225504)
+      if (!user) {
+        const digits = digitsOnly(raw);
+        if (digits.length < 7) {
+          throw new NotFoundException('User not found');
+        }
+
+        // Try the most specific suffix first (entire digits string), then last 7.
+        const suffixes = digits.length > 7 ? [digits, digits.slice(-7)] : [digits];
+
+        for (const suffix of suffixes) {
+          const re = new RegExp(`${escapeRegex(suffix)}$`);
+          const matches = await this.userModel
+            .find({ phone: { $regex: re } })
+            .limit(5)
+            .exec();
+
+          if (matches.length === 1) {
+            user = matches[0];
+            break;
+          }
+          if (matches.length > 1) {
+            throw new ConflictException(
+              'Multiple users matched this phone number. Please enter full phone number or email.',
+            );
+          }
+        }
+      }
+    }
 
     if (!user) {
       throw new NotFoundException('User not found');
