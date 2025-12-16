@@ -5,6 +5,7 @@ import { User } from "src/user/interfaces/user.interface";
 
 export class Registration {
   readonly _id: string;
+  legacyRegistrationKey?: string;
   readonly flagshipId: string | Flagship;
   readonly userId: string;
   readonly user: User;

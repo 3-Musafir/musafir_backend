@@ -1,5 +1,6 @@
 export class Flagship {
   readonly _id: string;
+  legacyFlagshipKey?: string;
   readonly tripName: string;
   readonly destination: string;
   readonly startDate: Date;

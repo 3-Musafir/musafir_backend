@@ -8,6 +8,7 @@ function transformValue(doc, ret: { [key: string]: any }) {
 
 export const RegistrationSchema = new Schema(
   {
+    legacyRegistrationKey: { type: String, required: true, index: true, unique: true, sparse: true },
     flagshipId: { type: Schema.Types.ObjectId, ref: 'Flagship', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },

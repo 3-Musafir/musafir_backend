@@ -1,4 +1,5 @@
-import mongoose, { Model } from 'mongoose';
+import 'dotenv/config';
+import mongoose from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
 import csv from 'csv-parser';
@@ -6,236 +7,281 @@ import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { UserSchema } from 'src/user/schemas/user.schema';
 
-// Define models
+// Models
 let User: any;
 let Flagship: any;
 let Registration: any;
 
-interface CSVRow {
-    Name: string;
-    Email: string;
-    Contact: string;
-    Event: string;
-    MID: string;
-    'Results': string; // Number of Flagships
-    'Column 1': string; // Discount Applicable
-    'Column 2': string; // List of trips
+/**
+ * Expected files (CSV headers must match):
+ * - seed-data/users.csv:
+ *   userKey,fullName,email,phone,city,roles,verification
+ *
+ * - seed-data/flagships.csv:
+ *   flagshipKey,canonicalName
+ *
+ * - seed-data/registrations.csv:
+ *   registrationKey,userKey,flagshipKey,flagshipNameRaw,isPaid,status
+ */
+
+type UserRow = {
+  userKey: string;
+  fullName: string;
+  email?: string;
+  phone: string;
+  city?: string;
+  roles?: string; // JSON array string like ["musafir"] or "musafir"
+  verification?: string; // JSON string, optional
+};
+
+type FlagshipRow = {
+  flagshipKey: string;
+  canonicalName: string;
+};
+
+type RegistrationRow = {
+  registrationKey: string;
+  userKey: string;
+  flagshipKey: string;
+  flagshipNameRaw?: string;
+  isPaid?: string;
+  status?: string;
+};
+
+function parseBool(v?: string): boolean {
+  if (!v) return false;
+  const s = String(v).trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes' || s === 'y';
 }
 
-interface ErrorRow {
-    row: number;
-    email: string;
-    name: string;
-    error: string;
-    data: any;
+function parseRoles(v?: string): string[] {
+  if (!v) return ['musafir'];
+  const raw = String(v).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map(String);
+  } catch {
+    // ignore
+  }
+  if (raw.includes(',')) return raw.split(',').map((x) => x.trim()).filter(Boolean);
+  return [raw];
+}
+
+function parseJsonObject(v?: string): Record<string, unknown> {
+  if (!v) return {};
+  try {
+    const parsed = JSON.parse(v);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function readCsv<T extends Record<string, any>>(filePath: string): Promise<T[]> {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`CSV not found: ${filePath}`);
+  }
+  const rows: T[] = [];
+  await new Promise<void>((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (data) => rows.push(data as T))
+      .on('end', () => resolve())
+      .on('error', reject);
+  });
+  return rows;
 }
 
 export async function seedFromCSV() {
-    try {
-        // console.log("MONGO_URI: ", process.env.MONGO_URI);
-        await mongoose.connect('mongodb+srv://imasadali7:0O5WTJaZAnRfhQcW@musafirdb.phwdtas.mongodb.net/?retryWrites=true&w=majority&appName=musafirdb');
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!mongoUri) {
+    throw new Error(
+      'MONGO_URI is not set. Put it in musafir_backend/.env or export it in your shell before running seed.',
+    );
+  }
+
+  const seedDir = path.join(process.cwd(), 'seed-data');
+  const usersCsv = path.join(seedDir, 'users.csv');
+  const flagshipsCsv = path.join(seedDir, 'flagships.csv');
+  const registrationsCsv = path.join(seedDir, 'registrations.csv');
+
+  await mongoose.connect(mongoUri);
         console.log('Connected to MongoDB');
 
-        // Delete existing models to ensure we use the latest schema
+  // Ensure fresh model definitions
         try {
             mongoose.deleteModel('users');
             mongoose.deleteModel('flagships');
             mongoose.deleteModel('registrations');
-        } catch (error) {
-            // Ignore errors if models don't exist
-            console.log('Models not found in cache, creating new ones...');
+  } catch {
+    // ignore
         }
 
-        // Define models
         User = mongoose.model('users', UserSchema);
         Flagship = mongoose.model('flagships', FlagshipSchema);
         Registration = mongoose.model('registrations', RegistrationSchema);
 
-        // Read CSV file using csv-parser
-        const csvPath = path.join(__dirname, '../../data.csv');
-        const results: any[] = [];
+  // Ensure a system user exists for created_By on historical flagships
+  const seederEmail = 'seed@3musafir.local';
+  let systemUser = await User.findOne({ email: seederEmail });
+  if (!systemUser) {
+    systemUser = await User.create({
+      legacyUserKey: 'USR_SEEDER',
+      fullName: 'Seeder User',
+      email: seederEmail,
+      phone: '0000000000',
+      referralID: 'SEEDER',
+      roles: ['admin'],
+      emailVerified: true,
+      verification: { status: 'verified', RequestCall: false },
+    });
+  }
 
-        // Parse CSV with csv-parser
-        await new Promise((resolve, reject) => {
-            fs.createReadStream(csvPath)
-                .pipe(csv())
-                .on('data', (data) => results.push(data))
-                .on('end', resolve)
-                .on('error', reject);
-        });
+  // 1) Flagships
+  const flagshipRows = await readCsv<FlagshipRow>(flagshipsCsv);
+  console.log(`Flagships to process: ${flagshipRows.length}`);
 
-        // Filter out header rows and problematic rows
-        const validRows = results.filter((row, index) => {
-            // Skip rows that are just event headers (no name, no email, but has event)
-            if (!row.Name && !row.Email && row.Event) {
-                console.log(`Skipping event header row: ${row.Event}`);
-                return false;
-            }
+  for (const r of flagshipRows) {
+    const legacyFlagshipKey = (r.flagshipKey || '').trim();
+    if (!legacyFlagshipKey) continue;
+    const tripName = (r.canonicalName || '').trim();
 
-            // Skip rows with #VALUE! errors
-            if (Object.values(row).some(v => v === '#VALUE!')) {
-                console.log(`Skipping row with #VALUE! error at row ${index + 3}`);
-                return false;
-            }
+    await Flagship.findOneAndUpdate(
+      { legacyFlagshipKey },
+      {
+        $setOnInsert: {
+          legacyFlagshipKey,
+          destination: 'Historical Trip',
+          startDate: new Date('2020-01-01'),
+          endDate: new Date('2020-01-03'),
+          category: 'flagship',
+          visibility: 'public',
+          created_By: systemUser._id,
+          status: 'completed',
+          publish: false,
+        },
+        $set: {
+          tripName: tripName || legacyFlagshipKey,
+        },
+      },
+      { upsert: true, new: true },
+    );
+  }
 
-            return true;
-        });
+  // 2) Users
+  const userRows = await readCsv<UserRow>(usersCsv);
+  console.log(`Users to process: ${userRows.length}`);
 
-        console.log(`Total rows to process: ${validRows.length}`);
+  for (const r of userRows) {
+    const legacyUserKey = (r.userKey || '').trim();
+    if (!legacyUserKey) continue;
 
-        const errorRows: ErrorRow[] = [];
-        let processedCount = 0;
-        let successCount = 0;
-        let errorCount = 0;
-
-        // Process all rows
-        for (let i = 0; i < validRows.length; i++) {
-            const row = validRows[i];
-            processedCount++;
-
-            try {
-                // Skip if no name (but allow users without email)
-                if (!row.Name) {
-                    const error: ErrorRow = {
-                        row: i + 3, // +3 because we skipped header rows and i is 0-based
-                        email: row.Email || 'NO_EMAIL',
-                        name: row.Name || 'NO_NAME',
-                        error: 'Missing name',
-                        data: row
-                    };
-                    errorRows.push(error);
-                    errorCount++;
-                    console.log(`${processedCount}/${validRows.length} ${row.Email || 'NO_EMAIL'} -- failed: Missing name`);
+    const email = r.email ? String(r.email).trim().toLowerCase() : undefined;
+    const phone = (r.phone || '').trim();
+    if (!phone) {
+      console.warn(`Skipping user ${legacyUserKey}: phone is required by schema`);
                     continue;
                 }
 
-                // Check if user already exists by email
-                const existingUser = await User.findOne({ email: row.Email.toLowerCase() });
-                if (existingUser) {
-                    const error: ErrorRow = {
-                        row: i + 3,
-                        email: row.Email,
-                        name: row.Name,
-                        error: 'User already exists with this email',
-                        data: row
-                    };
-                    errorRows.push(error);
-                    errorCount++;
-                    console.log(`${processedCount}/${validRows.length} ${row.Email} -- failed: User already exists`);
+    const roles = parseRoles(r.roles);
+    const verification = parseJsonObject(r.verification);
+
+    // Upsert by legacyUserKey first; fallback by email if provided
+    const query = email ? { $or: [{ legacyUserKey }, { email }] } : { legacyUserKey };
+
+    await User.findOneAndUpdate(
+      query,
+      {
+        $setOnInsert: {
+          referralID: legacyUserKey, // schema requires this; using legacy key is deterministic
+          emailVerified: true,
+        },
+        $set: {
+          legacyUserKey,
+          fullName: (r.fullName || '').trim(),
+          email,
+          phone,
+          city: r.city ? String(r.city).trim() : undefined,
+          roles,
+          verification,
+        },
+      },
+      { upsert: true, new: true },
+    );
+  }
+
+  // 3) Registrations
+  const registrationRows = await readCsv<RegistrationRow>(registrationsCsv);
+  console.log(`Registrations to process: ${registrationRows.length}`);
+
+  for (const r of registrationRows) {
+    const legacyRegistrationKey = (r.registrationKey || '').trim();
+    const legacyUserKey = (r.userKey || '').trim();
+    const legacyFlagshipKey = (r.flagshipKey || '').trim();
+    if (!legacyRegistrationKey || !legacyUserKey || !legacyFlagshipKey) continue;
+
+    const user = await User.findOne({ legacyUserKey }).exec();
+    if (!user) {
+      console.warn(`Skipping registration ${legacyRegistrationKey}: user not found (${legacyUserKey})`);
                     continue;
                 }
 
-                // Create user
-                const userData = {
-                    fullName: row.Name,
-                    email: row.Email?.trim() ? row.Email.toLowerCase() : undefined,
-                    phone: row.Contact,
-                    referralID: row.MID,
-                    roles: ['musafir'],
-                    emailVerified: true,
-                    verification: {
-                        status: 'verified'
-                    },
-                    discountApplicable: parseInt(row['Column 1']) || 0,
-                    numberOfFlagshipsAttended: parseInt(row['Results']) || 0
-                };
-
-                const user = await User.create(userData);
-
-                // Process flagship trips
-                if (row['Column 2']) {
-                    const tripNames = row['Column 2']
-                        .split(',')
-                        .map(name => name.trim())
-                        .filter(name => name && name !== '');
-
-                    for (const tripName of tripNames) {
-                        try {
-                            // Check if flagship exists
-                            let flagship = await Flagship.findOne({
-                                tripName: { $regex: new RegExp(tripName, 'i') }
-                            });
-
+    const flagship = await Flagship.findOne({ legacyFlagshipKey }).exec();
                             if (!flagship) {
-                                // If flagship doesn't exist, create it
-                                flagship = await Flagship.create({
-                                    tripName: tripName,
-                                    destination: 'Historical Trip', // Default for historical data
-                                    startDate: new Date('2020-01-01'), // Default historical date
-                                    endDate: new Date('2020-01-03'), // Default historical date
-                                    category: 'flagship', // Default category
-                                    visibility: 'public', // Default visibility
-                                    created_By: user._id,
-                                    status: 'completed'
-                                });
-                            }
-
-                            // Create registration
-                            await Registration.create({
-                                flagshipId: flagship._id,
-                                userId: user._id,
-                                user: user._id,
-                                flagship: flagship._id,
-                                status: 'completed',
-                                isPaid: true
-                            });
-
-                        } catch (tripError) {
-                            console.error(`❌ Error processing trip "${tripName}" for user ${row.Email}:`, tripError);
-                        }
-                    }
-                }
-
-                successCount++;
-                console.log(`✅ ${processedCount}/${validRows.length} ${row.Email || 'NO_EMAIL'} -- done`);
-
-            } catch (error) {
-                const errorRow: ErrorRow = {
-                    row: i + 3,
-                    email: row.Email || 'NO_EMAIL',
-                    name: row.Name || 'NO_NAME',
-                    error: error.message,
-                    data: row
-                };
-                errorRows.push(errorRow);
-                errorCount++;
-                console.log(`❌ ${processedCount}/${validRows.length} ${row.Email || 'NO_EMAIL'} -- failed: ${error.message}`);
-            }
-        }
-
-        // Create error CSV file
-        if (errorRows.length > 0) {
-            const errorCSVPath = path.join(__dirname, '../../error_log.csv');
-            const errorCSVContent = [
-                'Row,Email,Name,Error,Data',
-                ...errorRows.map(row =>
-                    `${row.row},"${row.email}","${row.name}","${row.error}","${JSON.stringify(row.data).replace(/"/g, '""')}"`
-                )
-            ].join('\n');
-
-            fs.writeFileSync(errorCSVPath, errorCSVContent);
-            console.log(`Error log saved to: ${errorCSVPath}`);
-        }
-
-        console.log('\n=== SEEDING COMPLETED ===');
-        console.log(`Total processed: ${processedCount}`);
-        console.log(`Successful: ${successCount}`);
-        console.log(`Failed: ${errorCount}`);
-        console.log(`Error log saved to: error_log.csv`);
-
-    } catch (error) {
-        console.error('Seeding failed:', error);
-    } finally {
-        await mongoose.disconnect();
-        console.log('Disconnected from MongoDB');
+      console.warn(`Skipping registration ${legacyRegistrationKey}: flagship not found (${legacyFlagshipKey})`);
+      continue;
     }
+
+    const isPaid = parseBool(r.isPaid);
+    const statusRaw = (r.status || '').trim() || (isPaid ? 'confirmed' : 'pending');
+    const status = statusRaw; // schema allows string
+
+    await Registration.findOneAndUpdate(
+      { legacyRegistrationKey },
+      {
+        $setOnInsert: {},
+        $set: {
+          legacyRegistrationKey,
+          userId: user._id,
+          user: user._id,
+          flagshipId: flagship._id,
+          flagship: flagship._id,
+          isPaid,
+          status,
+        },
+      },
+      { upsert: true, new: true },
+    );
+  }
+
+  // 4) Update derived user stats (completed trips only)
+  const completedCounts = await Registration.aggregate([
+    { $match: { status: 'completed' } },
+    { $group: { _id: '$userId', count: { $sum: 1 } } },
+  ]);
+
+  if (completedCounts.length > 0) {
+    const bulkOps = completedCounts.map((c: any) => ({
+      updateOne: {
+        filter: { _id: c._id },
+        update: {
+          $set: {
+            numberOfFlagshipsAttended: c.count,
+            discountApplicable: c.count * 500,
+          },
+        },
+      },
+    }));
+    await User.bulkWrite(bulkOps);
+  }
+
+  console.log('✅ Seeding completed!');
 }
 
-// Run the seeder if this file is executed directly
 if (require.main === module) {
-    seedFromCSV().then(() => {
-        process.exit(0);
-    }).catch((error) => {
+  seedFromCSV()
+    .then(() => process.exit(0))
+    .catch((error) => {
         console.error('Seeding failed:', error);
         process.exit(1);
     });

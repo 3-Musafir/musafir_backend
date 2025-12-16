@@ -14,6 +14,7 @@ export interface VerificationSubSchema {
 
 export interface User {
   _id: Types.ObjectId; // or Types.ObjectId | string if you sometimes string-ify it
+  legacyUserKey?: string;
   fullName: string;
   email?: string;
   password?: string;

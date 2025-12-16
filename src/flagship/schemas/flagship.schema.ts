@@ -77,6 +77,7 @@ const DiscountsSchema = new Schema(
 
 export const FlagshipSchema = new Schema(
   {
+    legacyFlagshipKey: { type: String, required: true, index: true, unique: true, sparse: true },
     tripName: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },

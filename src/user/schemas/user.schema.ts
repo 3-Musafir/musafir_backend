@@ -38,6 +38,7 @@ const VerificationSchema = new Schema<VerificationSchema>({
 
 export const UserSchema = new Schema(
   {
+    legacyUserKey: { type: String, required: false, index: true, unique: true, sparse: true },
     fullName: { type: String, required: false },
 
     profileImg: { type: String, required: false },
