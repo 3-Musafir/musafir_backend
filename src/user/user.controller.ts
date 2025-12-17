@@ -157,15 +157,10 @@ export class UserController {
     try {
       const user = req.user;
       if (verifyDto.referral1 && verifyDto.referral2) {
-        const user1 = await this.userService.findByReferralId(
-          verifyDto.referral1,
+        await this.userService.verifyWithReferrals(
+          user._id.toString(),
+          verifyDto,
         );
-        const user2 = await this.userService.findByReferralId(
-          verifyDto.referral2,
-        );
-        if (user1 && user2) {
-          await this.userService.setUserVerified(user._id.toString(), verifyDto);
-        }
         return successResponse({}, 'User verified successfully', 200);
       }
 

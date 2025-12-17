@@ -41,6 +41,32 @@ export class UserService {
     private readonly storageService: StorageService,
   ) { }
 
+  private ensureReferralPairValid(
+    applicant: UserDocument,
+    referral1?: string,
+    referral2?: string,
+  ) {
+    if (!referral1 || !referral2) {
+      throw new BadRequestException('Two referral codes are required.');
+    }
+    if (referral1 === referral2) {
+      throw new BadRequestException('Referral codes must be different.');
+    }
+    if (
+      applicant.referralID &&
+      (applicant.referralID === referral1 || applicant.referralID === referral2)
+    ) {
+      throw new BadRequestException('You cannot use your own referral code.');
+    }
+  }
+
+  private resolveVerifiedReferrer(referralID: string) {
+    return this.userModel.findOne({
+      referralID,
+      'verification.status': 'verified',
+    });
+  }
+
   // Create User
   async create(
     createUserDto: any,
@@ -338,6 +364,39 @@ export class UserService {
     return user;
   }
 
+  async verifyWithReferrals(applicantId: string, verifyUser: VerifyUserDto) {
+    const applicant = await this.userModel.findById(applicantId);
+    if (!applicant) {
+      throw new BadRequestException('Applicant not found.');
+    }
+
+    const { referral1, referral2 } = verifyUser;
+    this.ensureReferralPairValid(applicant, referral1, referral2);
+
+    const [user1, user2] = await Promise.all([
+      this.resolveVerifiedReferrer(referral1),
+      this.resolveVerifiedReferrer(referral2),
+    ]);
+
+    if (!user1 || !user2) {
+      throw new BadRequestException(
+        'Referral codes must belong to verified users.',
+      );
+    }
+
+    if (user1._id.equals(user2._id)) {
+      throw new BadRequestException(
+        'Referral codes must come from two different users.',
+      );
+    }
+
+    if (user1._id.equals(applicant._id) || user2._id.equals(applicant._id)) {
+      throw new BadRequestException('You cannot verify yourself.');
+    }
+
+    return this.setUserVerified(applicantId, verifyUser);
+  }
+
   // Reset Password
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
     // Find the user
@@ -478,7 +537,20 @@ export class UserService {
   }
 
   async getUserData(user: User): Promise<User> {
-    return user;
+    const verifiedByMe = await this.userModel.countDocuments({
+      'verification.status': 'verified',
+      'verification.referralIDs': user.referralID,
+    });
+
+    const plainUser =
+      typeof (user as any)?.toObject === 'function'
+        ? (user as any).toObject()
+        : user;
+
+    return {
+      ...(plainUser as any),
+      verificationStats: { verifiedByMe },
+    };
   }
 
   async unverifiedUsers(search?: string) {
