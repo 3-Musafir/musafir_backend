@@ -76,7 +76,20 @@ export const UserSchema = new Schema(
       enum: ['male', 'female', 'other'],
     },
 
-    cnic: { type: String, required: false },
+    cnic: {
+      type: String,
+      required: false,
+      minlength: 13,
+      maxlength: 13,
+      validate: {
+        validator: function (value: string) {
+          // Allow missing/empty CNIC, otherwise enforce exactly 13 digits
+          if (!value) return true;
+          return /^[0-9]{13}$/.test(value);
+        },
+        message: 'CNIC must be exactly 13 digits',
+      },
+    },
 
     university: { type: String, required: false },
 
