@@ -63,7 +63,10 @@ export const UserSchema = new Schema(
 
     googleId: { type: String, required: false },
 
-    phone: { type: String, required: true },
+    // Phone is optional at creation so Google signups can complete and
+    // provide it later in profile completion. Validation for normal
+    // signups happens in the DTO layer.
+    phone: { type: String, required: false },
 
     referralID: { type: String, required: true },
 
