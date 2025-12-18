@@ -41,6 +41,30 @@ export class UserService {
     private readonly storageService: StorageService,
   ) { }
 
+  private isProfileComplete(user: Partial<User>) {
+    const digits = (value?: string) =>
+      typeof value === 'string' ? value.replace(/\D/g, '') : '';
+
+    const hasPhone = digits(user.phone || '').length >= 10;
+    const hasCnic = typeof user.cnic === 'string' && user.cnic.trim().length === 13;
+    const hasCity = Boolean(user.city);
+    const hasSocial = Boolean(user.socialLink);
+    const hasUniversity = Boolean(user.university);
+    const hasGender = Boolean(user.gender);
+
+    return Boolean(hasPhone && hasCnic && hasCity && hasSocial && hasUniversity && hasGender);
+  }
+
+  addProfileStatus(user: any) {
+    const plainUser =
+      typeof user?.toObject === 'function' ? user.toObject() : user;
+
+    return {
+      ...(plainUser as any),
+      profileComplete: this.isProfileComplete(plainUser),
+    };
+  }
+
   private ensureReferralPairValid(
     applicant: UserDocument,
     referral1?: string,
@@ -98,9 +122,10 @@ export class UserService {
       user.verification.status = 'unverified';
       await user.save();
     }
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
-      email: user.email,
+      user: userWithStatus,
+      email: userWithStatus.email,
       accessToken: await this.authService.createAccessToken(String(user._id)),
       refreshToken: await this.authService.createRefreshToken(req, user._id),
     };
@@ -118,8 +143,9 @@ export class UserService {
       user.verification.status = 'unverified';
       await user.save();
     }
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
+      user: userWithStatus,
       accessToken: await this.authService.createAccessToken(String(user._id)),
       refreshToken: await this.authService.createRefreshToken(req, user._id),
     };
@@ -158,8 +184,9 @@ export class UserService {
   async login(req: Request, loginUserDto: LoginUserDto) {
     const user = await this.findUserByEmail(loginUserDto.email);
     await this.checkPassword(loginUserDto.password, user);
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
+      user: userWithStatus,
       fullName: user.fullName,
       email: user.email,
       accessToken: await this.authService.createAccessToken(String(user._id)),
@@ -542,13 +569,10 @@ export class UserService {
       'verification.referralIDs': user.referralID,
     });
 
-    const plainUser =
-      typeof (user as any)?.toObject === 'function'
-        ? (user as any).toObject()
-        : user;
+    const userWithStatus = this.addProfileStatus(user);
 
     return {
-      ...(plainUser as any),
+      ...(userWithStatus as any),
       verificationStats: { verifiedByMe },
     };
   }
@@ -792,6 +816,18 @@ export class UserService {
     }
     if (updateUserDto.phone) {
       user.phone = updateUserDto.phone;
+    }
+    if (updateUserDto.city) {
+      user.city = updateUserDto.city;
+    }
+    if (updateUserDto.university) {
+      user.university = updateUserDto.university;
+    }
+    if (updateUserDto.socialLink) {
+      user.socialLink = updateUserDto.socialLink;
+    }
+    if (updateUserDto.gender) {
+      user.gender = updateUserDto.gender;
     }
     if (updateUserDto.cnic) {
       user.cnic = updateUserDto.cnic;

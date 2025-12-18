@@ -194,8 +194,9 @@ export class UserController {
   async getVerifyUser(@Req() req: AuthenticatedRequest): Promise<any> {
     try {
       const user = req.user;
+      const enrichedUser = this.userService.addProfileStatus(user);
 
-      return successResponse(user, 'Verified User', 200);
+      return successResponse(enrichedUser, 'Verified User', 200);
     } catch (error) {
       return errorResponse(error);
     }

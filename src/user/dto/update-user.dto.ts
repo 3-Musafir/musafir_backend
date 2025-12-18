@@ -31,6 +31,42 @@ export class UpdateUserDto {
   readonly phone?: string;
 
   @ApiProperty({
+    example: 'Lahore',
+    description: 'City of the User',
+    format: 'string',
+  })
+  @IsOptional()
+  @IsString()
+  readonly city?: string;
+
+  @ApiProperty({
+    example: 'Comsats University',
+    description: 'University or workplace of the User',
+    format: 'string',
+  })
+  @IsOptional()
+  @IsString()
+  readonly university?: string;
+
+  @ApiProperty({
+    example: 'instagram.com/username',
+    description: 'Active Social Media of the User',
+    format: 'string',
+  })
+  @IsOptional()
+  @IsString()
+  readonly socialLink?: string;
+
+  @ApiProperty({
+    example: 'male',
+    description: 'Gender of the User',
+    format: 'string',
+  })
+  @IsOptional()
+  @IsString()
+  readonly gender?: string;
+
+  @ApiProperty({
     example: '33**********5',
     description: 'CNIC of the User',
     format: 'string',
