@@ -93,7 +93,7 @@ async function readCsv<T extends Record<string, any>>(filePath: string): Promise
 }
 
 export async function seedFromCSV() {
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const mongoUri = process.env.MONGO_URI;
   if (!mongoUri) {
     throw new Error(
       'MONGO_URI is not set. Put it in musafir_backend/.env or export it in your shell before running seed.',

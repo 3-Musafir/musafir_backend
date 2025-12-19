@@ -15,9 +15,16 @@ import { FaqModule } from './FAQ/faq.module';
 import { RatingModule } from './Rating/rating.module';
 import { PaymentModule } from './payment/payment.module';
 
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+  throw new Error(
+    'MongoDB URI not configured. Set MONGO_URI in environment variables.',
+  );
+}
+
 @Module({
   imports: [
-    MongooseModule.forRoot(process.env.MONGO_URI),
+    MongooseModule.forRoot(mongoUri),
     UserModule,
     AuthModule,
     PaymentModule,
