@@ -31,10 +31,7 @@ export class MailService {
 
     this.brevoClient = apiInstance;
 
-    this.templatesDir =
-      process.env.NODE_ENV === 'production'
-        ? join(process.cwd(), 'dist', 'mail', 'templates')
-        : join(process.cwd(), 'src', 'mail', 'templates');
+    this.templatesDir = join(__dirname, 'templates');
   }
 
 
