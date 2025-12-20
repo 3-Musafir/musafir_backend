@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "postbuild": "copyfiles -u 3 src/mail/templates/*.hbs dist/mail/templates",
+    "postbuild": "copyfiles -u 1 \"src/mail/templates/**/*.hbs\" dist",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
