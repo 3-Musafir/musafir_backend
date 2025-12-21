@@ -93,6 +93,13 @@ export const UserSchema = new Schema(
 
     university: { type: String, required: false },
 
+    employmentStatus: {
+      type: String,
+      required: false,
+      enum: ['student', 'employed', 'selfEmployed', 'unemployed'],
+      default: 'unemployed',
+    },
+
     socialLink: { type: String, required: false },
 
     dateOfBirth: { type: String, required: false },
@@ -112,6 +119,8 @@ export const UserSchema = new Schema(
     discountApplicable: { type: Number, required: false, default: 0 },
 
     numberOfFlagshipsAttended: { type: Number, required: false, default: 0 },
+    referredBy: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+    referredCode: { type: String, required: false },
   },
   {
     toJSON: {

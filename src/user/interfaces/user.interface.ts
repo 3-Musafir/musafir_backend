@@ -16,6 +16,7 @@ export interface User {
   _id: Types.ObjectId; // or Types.ObjectId | string if you sometimes string-ify it
   legacyUserKey?: string;
   fullName: string;
+  profileImg?: string;
   email?: string;
   password?: string;
   googleId?: string;
@@ -24,6 +25,7 @@ export interface User {
   gender: 'male' | 'female' | 'other';
   cnic?: string;
   university?: string;
+  employmentStatus?: 'student' | 'employed' | 'selfEmployed' | 'unemployed';
   socialLink?: string;
   dateOfBirth?: string;
   working?: boolean;
@@ -34,6 +36,8 @@ export interface User {
   verification?: VerificationSubSchema;
   discountApplicable?: number;
   numberOfFlagshipsAttended?: number;
+  referredBy?: Types.ObjectId;
+  referredCode?: string;
 }
 
 // When dealing with actual Mongoose documents:

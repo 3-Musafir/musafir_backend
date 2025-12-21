@@ -16,7 +16,6 @@ import {
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -37,6 +36,7 @@ import { GetUser } from 'src/auth/decorators/user.decorator';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { User } from 'src/user/interfaces/user.interface';
 import { TripQueryDto } from './dto/trip-query.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @ApiTags('Flagship')
 @Controller('flagship')
@@ -45,6 +45,7 @@ export class FlagshipController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new flagship trip' })
   @ApiResponse({
@@ -86,6 +87,7 @@ export class FlagshipController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'files', maxCount: 10 },
@@ -119,7 +121,8 @@ export class FlagshipController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a flagships' })
   @ApiOkResponse({})
@@ -145,7 +148,8 @@ export class FlagshipController {
   }
 
   @Get('registered/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get registered users for a flagship' })
   @ApiOkResponse({})
@@ -157,7 +161,8 @@ export class FlagshipController {
   }
 
   @Get('pending-verification/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get pending verification users for a flagship' })
   @ApiOkResponse({})
@@ -166,7 +171,8 @@ export class FlagshipController {
   }
 
   @Get('paid/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get paid users for a flagship' })
   @ApiOkResponse({})
@@ -178,7 +184,8 @@ export class FlagshipController {
   }
 
   @Get('registeration-stats/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get registeration stats for a flagship' })
   @ApiOkResponse({})
@@ -187,7 +194,8 @@ export class FlagshipController {
   }
 
   @Get('payment-stats/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get payment stats for a flagship' })
   @ApiOkResponse({})
@@ -196,7 +204,8 @@ export class FlagshipController {
   }
 
   @Get('registration/:id')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get registration by ID' })
   @ApiOkResponse({})
@@ -205,7 +214,8 @@ export class FlagshipController {
   }
 
   @Patch('approve-registration/:registerationID')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'approve registeration' })
   @ApiOkResponse({})
@@ -217,7 +227,8 @@ export class FlagshipController {
   }
 
   @Patch('reject-registration/:registerationID')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'reject registeration' })
   @ApiOkResponse({})
@@ -229,7 +240,8 @@ export class FlagshipController {
   }
 
   @Patch('didnt-pick/:registerationID')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "mark registration as didntPick" })
   @ApiOkResponse({})
@@ -238,7 +250,8 @@ export class FlagshipController {
   }
 
   @Patch('verify-user/:userID')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'verify user' })
   @ApiOkResponse({})
@@ -247,7 +260,8 @@ export class FlagshipController {
   }
 
   @Patch('reject-verification/:userID')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'reject registeration' })
   @ApiOkResponse({})

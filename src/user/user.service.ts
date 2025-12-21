@@ -49,10 +49,15 @@ export class UserService {
     const hasCnic = typeof user.cnic === 'string' && user.cnic.trim().length === 13;
     const hasCity = Boolean(user.city);
     const hasSocial = Boolean(user.socialLink);
-    const hasUniversity = Boolean(user.university);
+    const employmentStatus = (user as any).employmentStatus || 'unemployed';
+    const validStatus = ['student', 'employed', 'selfEmployed', 'unemployed'].includes(
+      employmentStatus as string,
+    );
+    const requiresWorkDetail = employmentStatus !== 'unemployed';
+    const hasWorkDetail = requiresWorkDetail ? Boolean(user.university) : true;
     const hasGender = Boolean(user.gender);
 
-    return Boolean(hasPhone && hasCnic && hasCity && hasSocial && hasUniversity && hasGender);
+    return Boolean(hasPhone && hasCnic && hasCity && hasSocial && validStatus && hasWorkDetail && hasGender);
   }
 
   addProfileStatus(user: any) {
@@ -91,6 +96,23 @@ export class UserService {
     });
   }
 
+  private async applyReferralAttribution(
+    user: UserDocument,
+    referralCode?: string,
+  ) {
+    if (!referralCode) return;
+    try {
+      const referrer = await this.resolveVerifiedReferrer(referralCode);
+      if (referrer) {
+        user.referredBy = referrer._id as any;
+        user.referredCode = referralCode;
+      }
+    } catch (err) {
+      // swallow attribution errors; should not block signup
+      console.warn('Referral attribution failed', err);
+    }
+  }
+
   // Create User
   async create(
     createUserDto: any,
@@ -98,6 +120,7 @@ export class UserService {
     createUserDto.password = generateRandomPassword();
     const user = new this.userModel(createUserDto);
     await this.isEmailUnique(user.email);
+    await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
     user.referralID = generateUniqueCode();
     user.verification.verificationID = v4();
     user.verification.status = 'unverified'; // @TODO: Make these statuses enum in constants file
@@ -116,6 +139,7 @@ export class UserService {
     if (!user) {
       user = new this.userModel(userDto);
       await this.isEmailUnique(user.email);
+      await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
@@ -137,6 +161,7 @@ export class UserService {
     if (!user) {
       user = new this.userModel(userDto);
       await this.isEmailUnique(user.email);
+      await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
@@ -319,7 +344,11 @@ export class UserService {
     const newPassword = generateRandomPassword();
     user.password = newPassword;
     user.emailVerified = true;
-    user.verification.status = 'verified';
+    // Preserve existing verification status; do not auto-verify on email confirm
+    if (!user.verification?.status) {
+      user.verification = user.verification || {};
+      user.verification.status = 'unverified';
+    }
 
     await user.save();
 
@@ -823,6 +852,12 @@ export class UserService {
     if (updateUserDto.university) {
       user.university = updateUserDto.university;
     }
+    if (updateUserDto.employmentStatus) {
+      user.employmentStatus = updateUserDto.employmentStatus as any;
+      if (updateUserDto.employmentStatus === 'unemployed') {
+        user.university = '';
+      }
+    }
     if (updateUserDto.socialLink) {
       user.socialLink = updateUserDto.socialLink;
     }
@@ -831,6 +866,9 @@ export class UserService {
     }
     if (updateUserDto.cnic) {
       user.cnic = updateUserDto.cnic;
+    }
+    if (typeof updateUserDto.profileImg !== 'undefined') {
+      user.profileImg = updateUserDto.profileImg;
     }
 
     return await user.save();
