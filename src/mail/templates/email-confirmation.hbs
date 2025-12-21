@@ -1,9 +1,192 @@
-<p>Dear Musafir,</p>
-</br>
-<p>Thank you for your interest in joining the 3Musafir community. We're excited to have you on board!</p>
-<p>Here is your temporary password: {{password}}</p>
-<p>Please use this password to log in and verify your email address as soon as possible to complete your account setup. If you have any questions or need assistance, feel free to reach out.</p>
-<p>We appreciate your support and look forward to exploring new horizons with you!</p>
-</br>
-<p>Best regards,</p>
-<p>The 3Musafir Team</p>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Welcome to 3Musafir</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+        color: white;
+        padding: 30px 20px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 600;
+      }
+      .content {
+        padding: 40px 30px;
+      }
+      .greeting {
+        font-size: 18px;
+        color: #333;
+        margin-bottom: 20px;
+      }
+      .password-section {
+        background-color: #f8f9fa;
+        border: 2px dashed #ff6b35;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 30px 0;
+        text-align: center;
+      }
+      .password-label {
+        font-size: 14px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+      .password-box {
+        background-color: #ffffff;
+        border: 2px solid #ff6b35;
+        border-radius: 6px;
+        padding: 15px 20px;
+        font-family: 'Courier New', monospace;
+        font-size: 24px;
+        font-weight: bold;
+        color: #ff6b35;
+        letter-spacing: 2px;
+        user-select: all;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      .password-box:hover {
+        background-color: #fff5f2;
+        transform: scale(1.02);
+      }
+      .copy-hint {
+        font-size: 12px;
+        color: #999;
+        margin-top: 10px;
+        font-style: italic;
+      }
+      .info-box {
+        background-color: #fff8e1;
+        border-left: 4px solid #ffa726;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+      }
+      .info-box p {
+        margin: 0;
+        color: #666;
+      }
+      .message {
+        color: #555;
+        font-size: 15px;
+        line-height: 1.8;
+        margin-bottom: 20px;
+      }
+      .footer {
+        background-color: #f8f9fa;
+        padding: 25px 30px;
+        text-align: center;
+        border-top: 1px solid #e9ecef;
+      }
+      .footer p {
+        margin: 5px 0;
+        color: #666;
+        font-size: 14px;
+      }
+      .signature {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+      }
+      .signature p {
+        margin: 5px 0;
+        color: #666;
+      }
+      .team-name {
+        color: #ff6b35;
+        font-weight: 600;
+      }
+      @media only screen and (max-width: 600px) {
+        body {
+          padding: 10px;
+        }
+        .content {
+          padding: 25px 20px;
+        }
+        .header h1 {
+          font-size: 24px;
+        }
+        .password-box {
+          font-size: 20px;
+          padding: 12px 15px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class='container'>
+      <div class='header'>
+        <h1>🎉 Welcome to 3Musafir!</h1>
+      </div>
+
+      <div class='content'>
+        <p class='greeting'>Dear Musafir,</p>
+
+        <p class='message'>
+          Thank you for your interest in joining the 3Musafir community. We're
+          excited to have you on board and can't wait to start this journey with
+          you!
+        </p>
+
+        <div class='password-section'>
+          <div class='password-label'>Your Temporary Password</div>
+          <div class='password-box'>{{password}}</div>
+          <div class='copy-hint'>👆 Copy from above</div>
+        </div>
+
+        <div class='info-box'>
+          <p>
+            <strong>⚠️ Important:</strong>
+            Please use this temporary password to log in and verify your email
+            address as soon as possible to complete your account setup.
+          </p>
+        </div>
+
+        <p class='message'>
+          We appreciate your support and look forward to exploring new horizons
+          with you! If you have any questions or need assistance, feel free to
+          reach out to us.
+        </p>
+
+        <div class='signature'>
+          <p>Best regards,</p>
+          <p class='team-name'>The 3Musafir Team</p>
+        </div>
+      </div>
+
+      <div class='footer'>
+        <p>
+          This email was sent to you because you registered for a 3Musafir
+          account.
+        </p>
+        <p style='font-size: 12px; color: #999; margin-top: 10px;'>
+          © 2025 3Musafir. All rights reserved.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
