@@ -1,18 +1,17 @@
-import 'module-alias/register';
-import { UserModule } from './user/user.module';
-import { FlagshipModule } from './flagship/flagship.module';
-import 'dotenv/config';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { warn } from 'console';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
-import * as dotenv from 'dotenv';
-import { RegistrationModule } from './registration/registration.module';
-import { FeedbackModule } from './feedback/feedback.module';
-import { seed } from './util/seeder';
-import { join } from 'path';
+import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { warn } from 'console';
+import * as dotenv from 'dotenv';
+import 'dotenv/config';
+import 'module-alias/register';
+import { join } from 'path';
+import { AppModule } from './app.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { FlagshipModule } from './flagship/flagship.module';
+import { RegistrationModule } from './registration/registration.module';
+import { UserModule } from './user/user.module';
 dotenv.config();
 
 async function bootstrap() {
@@ -43,7 +42,6 @@ async function bootstrap() {
   app.enableCors({
     origin: (origin, callback) => {
       const allowedOrigins = [
-        'https://main.d1gcdykopg01ak.amplifyapp.com',
         'http://localhost:3000',
         'https://test.3musafir.com',
         'https://www.3musafir.com',

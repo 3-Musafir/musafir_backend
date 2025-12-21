@@ -69,7 +69,7 @@ export class MailService {
       const email = new SendSmtpEmail();
       email.subject = subject;
       email.htmlContent = htmlContent;
-      email.sender = { email: process.env.MUSAFIR_MAIL };
+      email.sender = { email: process.env.MAIL_FROM_TRANSACTIONAL };
       email.to = [{ email: to }];
 
       const response = await this.brevoClient.sendTransacEmail(email);
