@@ -14,6 +14,7 @@ import { FeedbackModule } from './feedback/feedback.module';
 import { FaqModule } from './FAQ/faq.module';
 import { RatingModule } from './Rating/rating.module';
 import { PaymentModule } from './payment/payment.module';
+import { NotificationModule } from './notifications/notification.module';
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -34,6 +35,7 @@ if (!mongoUri) {
     FeedbackModule,
     FaqModule,
     RatingModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [

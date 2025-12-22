@@ -194,16 +194,17 @@ export class UserController {
   async getVerifyUser(@Req() req: AuthenticatedRequest): Promise<any> {
     try {
       const user = req.user;
+      const enrichedUser = this.userService.addProfileStatus(user);
 
-      return successResponse(user, 'Verified User', 200);
+      return successResponse(enrichedUser, 'Verified User', 200);
     } catch (error) {
       return errorResponse(error);
     }
   }
 
   @Get('data')
-  // @Roles('admin')
   @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'A private route for check the auth' })
   @HttpCode(HttpStatus.OK)
@@ -240,9 +241,9 @@ export class UserController {
   }
 
   @Get('unverified-users')
-  // @Roles('admin')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get Unverified Users' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({})
@@ -251,9 +252,9 @@ export class UserController {
   }
 
   @Get('verified-users')
-  // @Roles('admin')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get Verified Users' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({})
@@ -262,9 +263,9 @@ export class UserController {
   }
 
   @Get('pending-verification-users')
-  // @Roles('admin')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get Pending Verification Users' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({})
@@ -273,6 +274,9 @@ export class UserController {
   }
 
   @Get('search-users')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Search users across all verification statuses' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({})
@@ -281,6 +285,9 @@ export class UserController {
   }
 
   @Get('user-details/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get User by ID' })
   @ApiOkResponse({})
@@ -289,6 +296,9 @@ export class UserController {
   }
 
   @Patch('approve/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve User' })
   @ApiOkResponse({})
@@ -297,6 +307,9 @@ export class UserController {
   }
 
   @Patch('reject/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject User' })
   @ApiOkResponse({})
@@ -305,6 +318,9 @@ export class UserController {
   }
 
   @Post('find-user')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Find user by email or phone' })
   @ApiOkResponse({})
@@ -313,6 +329,9 @@ export class UserController {
   }
 
   @Post('verify-musafir-email')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify musafir email and generate password' })
   @ApiOkResponse({})

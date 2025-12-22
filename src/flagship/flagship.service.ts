@@ -19,6 +19,7 @@ import { MailService } from 'src/mail/mail.service';
 import { successResponse, errorResponse } from '../constants/response';
 import { StorageService } from 'src/storage/storageService';
 import sharp from 'sharp';
+import { NotificationService } from 'src/notifications/notification.service';
 
 @Injectable()
 export class FlagshipService {
@@ -32,6 +33,7 @@ export class FlagshipService {
     private readonly registerationModel: Model<Registration>,
     @InjectModel('Payment')
     private readonly paymentModel: Model<Payment>,
+    private readonly notificationService: NotificationService,
   ) { }
 
   async create(createFlagshipDto: CreateFlagshipDto): Promise<Flagship> {
@@ -40,7 +42,9 @@ export class FlagshipService {
     const diffDays = endDate.diff(startDate, 'day');
     createFlagshipDto.days = diffDays;
     const newFlagship = new this.flagshipModel(createFlagshipDto);
-    return await newFlagship.save();
+    const saved = await newFlagship.save();
+    await this.notifyNewFlagship(saved);
+    return saved;
   }
 
   async createFlagship(
@@ -127,6 +131,27 @@ export class FlagshipService {
     }
 
     return flagship;
+  }
+
+  private async notifyNewFlagship(flagship: Flagship) {
+    try {
+      const users = await this.userModel
+        .find({ roles: { $ne: 'admin' } })
+        .select('_id')
+        .lean();
+      const userIds = users.map((u) => u._id.toString());
+      if (userIds.length === 0) return;
+
+      await this.notificationService.createForUsers(userIds, {
+        title: 'New Flagship Posted',
+        message: `${flagship.tripName} is now live. Check it out!`,
+        type: 'flagship',
+        link: `/flagship/details?id=${flagship['_id']}`,
+        metadata: { flagshipId: flagship['_id'] },
+      });
+    } catch (error) {
+      console.log('Failed to broadcast flagship notification', error?.message || error);
+    }
   }
 
   async update(

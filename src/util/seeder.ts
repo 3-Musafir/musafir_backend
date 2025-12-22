@@ -27,6 +27,25 @@ const FAQ = mongoose.model('faqs', FaqSchema);
 export async function seed() {
   await mongoose.connect(process.env.MONGO_URI);
 
+  // Ensure an admin user exists so protected routes remain accessible
+  const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@musafir.local';
+  const adminReferralId = 'ADMIN_REF';
+  const existingAdmin = await User.findOne({ email: adminEmail });
+  if (!existingAdmin) {
+    await User.create({
+      fullName: 'Default Admin',
+      email: adminEmail,
+      password: process.env.ADMIN_PASSWORD ?? 'ChangeMe123!',
+      phone: '0000000000',
+      referralID: adminReferralId,
+      gender: 'other',
+      roles: ['admin'],
+      emailVerified: true,
+      verification: { status: 'verified', RequestCall: false },
+    });
+    console.log(`Seeded admin user ${adminEmail}`);
+  }
+
   // await Flagship.deleteMany({});
   // await User.deleteMany({});
   // await Registration.deleteMany({});

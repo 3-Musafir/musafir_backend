@@ -41,6 +41,35 @@ export class UserService {
     private readonly storageService: StorageService,
   ) { }
 
+  private isProfileComplete(user: Partial<User>) {
+    const digits = (value?: string) =>
+      typeof value === 'string' ? value.replace(/\D/g, '') : '';
+
+    const hasPhone = digits(user.phone || '').length >= 10;
+    const hasCnic = typeof user.cnic === 'string' && user.cnic.trim().length === 13;
+    const hasCity = Boolean(user.city);
+    const hasSocial = Boolean(user.socialLink);
+    const employmentStatus = (user as any).employmentStatus || 'unemployed';
+    const validStatus = ['student', 'employed', 'selfEmployed', 'unemployed'].includes(
+      employmentStatus as string,
+    );
+    const requiresWorkDetail = employmentStatus !== 'unemployed';
+    const hasWorkDetail = requiresWorkDetail ? Boolean(user.university) : true;
+    const hasGender = Boolean(user.gender);
+
+    return Boolean(hasPhone && hasCnic && hasCity && hasSocial && validStatus && hasWorkDetail && hasGender);
+  }
+
+  addProfileStatus(user: any) {
+    const plainUser =
+      typeof user?.toObject === 'function' ? user.toObject() : user;
+
+    return {
+      ...(plainUser as any),
+      profileComplete: this.isProfileComplete(plainUser),
+    };
+  }
+
   private ensureReferralPairValid(
     applicant: UserDocument,
     referral1?: string,
@@ -67,6 +96,23 @@ export class UserService {
     });
   }
 
+  private async applyReferralAttribution(
+    user: UserDocument,
+    referralCode?: string,
+  ) {
+    if (!referralCode) return;
+    try {
+      const referrer = await this.resolveVerifiedReferrer(referralCode);
+      if (referrer) {
+        user.referredBy = referrer._id as any;
+        user.referredCode = referralCode;
+      }
+    } catch (err) {
+      // swallow attribution errors; should not block signup
+      console.warn('Referral attribution failed', err);
+    }
+  }
+
   // Create User
   async create(
     createUserDto: any,
@@ -74,6 +120,7 @@ export class UserService {
     createUserDto.password = generateRandomPassword();
     const user = new this.userModel(createUserDto);
     await this.isEmailUnique(user.email);
+    await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
     user.referralID = generateUniqueCode();
     user.verification.verificationID = v4();
     user.verification.status = 'unverified'; // @TODO: Make these statuses enum in constants file
@@ -92,15 +139,17 @@ export class UserService {
     if (!user) {
       user = new this.userModel(userDto);
       await this.isEmailUnique(user.email);
+      await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
       user.verification.status = 'unverified';
       await user.save();
     }
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
-      email: user.email,
+      user: userWithStatus,
+      email: userWithStatus.email,
       accessToken: await this.authService.createAccessToken(String(user._id)),
       refreshToken: await this.authService.createRefreshToken(req, user._id),
     };
@@ -112,14 +161,16 @@ export class UserService {
     if (!user) {
       user = new this.userModel(userDto);
       await this.isEmailUnique(user.email);
+      await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
       user.verification.status = 'unverified';
       await user.save();
     }
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
+      user: userWithStatus,
       accessToken: await this.authService.createAccessToken(String(user._id)),
       refreshToken: await this.authService.createRefreshToken(req, user._id),
     };
@@ -158,8 +209,9 @@ export class UserService {
   async login(req: Request, loginUserDto: LoginUserDto) {
     const user = await this.findUserByEmail(loginUserDto.email);
     await this.checkPassword(loginUserDto.password, user);
+    const userWithStatus = this.addProfileStatus(user);
     return {
-      user,
+      user: userWithStatus,
       fullName: user.fullName,
       email: user.email,
       accessToken: await this.authService.createAccessToken(String(user._id)),
@@ -292,7 +344,11 @@ export class UserService {
     const newPassword = generateRandomPassword();
     user.password = newPassword;
     user.emailVerified = true;
-    user.verification.status = 'verified';
+    // Preserve existing verification status; do not auto-verify on email confirm
+    if (!user.verification?.status) {
+      user.verification = user.verification || {};
+      user.verification.status = 'unverified';
+    }
 
     await user.save();
 
@@ -542,13 +598,10 @@ export class UserService {
       'verification.referralIDs': user.referralID,
     });
 
-    const plainUser =
-      typeof (user as any)?.toObject === 'function'
-        ? (user as any).toObject()
-        : user;
+    const userWithStatus = this.addProfileStatus(user);
 
     return {
-      ...(plainUser as any),
+      ...(userWithStatus as any),
       verificationStats: { verifiedByMe },
     };
   }
@@ -793,8 +846,29 @@ export class UserService {
     if (updateUserDto.phone) {
       user.phone = updateUserDto.phone;
     }
+    if (updateUserDto.city) {
+      user.city = updateUserDto.city;
+    }
+    if (updateUserDto.university) {
+      user.university = updateUserDto.university;
+    }
+    if (updateUserDto.employmentStatus) {
+      user.employmentStatus = updateUserDto.employmentStatus as any;
+      if (updateUserDto.employmentStatus === 'unemployed') {
+        user.university = '';
+      }
+    }
+    if (updateUserDto.socialLink) {
+      user.socialLink = updateUserDto.socialLink;
+    }
+    if (updateUserDto.gender) {
+      user.gender = updateUserDto.gender;
+    }
     if (updateUserDto.cnic) {
       user.cnic = updateUserDto.cnic;
+    }
+    if (typeof updateUserDto.profileImg !== 'undefined') {
+      user.profileImg = updateUserDto.profileImg;
     }
 
     return await user.save();

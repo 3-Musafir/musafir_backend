@@ -63,7 +63,10 @@ export const UserSchema = new Schema(
 
     googleId: { type: String, required: false },
 
-    phone: { type: String, required: true },
+    // Phone is optional at creation so Google signups can complete and
+    // provide it later in profile completion. Validation for normal
+    // signups happens in the DTO layer.
+    phone: { type: String, required: false },
 
     referralID: { type: String, required: true },
 
@@ -73,9 +76,29 @@ export const UserSchema = new Schema(
       enum: ['male', 'female', 'other'],
     },
 
-    cnic: { type: String, required: false },
+    cnic: {
+      type: String,
+      required: false,
+      minlength: 13,
+      maxlength: 13,
+      validate: {
+        validator: function (value: string) {
+          // Allow missing/empty CNIC, otherwise enforce exactly 13 digits
+          if (!value) return true;
+          return /^[0-9]{13}$/.test(value);
+        },
+        message: 'CNIC must be exactly 13 digits',
+      },
+    },
 
     university: { type: String, required: false },
+
+    employmentStatus: {
+      type: String,
+      required: false,
+      enum: ['student', 'employed', 'selfEmployed', 'unemployed'],
+      default: 'unemployed',
+    },
 
     socialLink: { type: String, required: false },
 
@@ -96,6 +119,8 @@ export const UserSchema = new Schema(
     discountApplicable: { type: Number, required: false, default: 0 },
 
     numberOfFlagshipsAttended: { type: Number, required: false, default: 0 },
+    referredBy: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+    referredCode: { type: String, required: false },
   },
   {
     toJSON: {
