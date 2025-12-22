@@ -42,7 +42,7 @@ export class NotificationService {
 
     const dtoList = created.map((doc) => {
       const dto = this.toDto(doc);
-      this.gateway.sendToUser(String((doc as any).userId), dto);
+      this.gateway.sendNewNotification(String((doc as any).userId), dto);
       return dto;
     });
 
@@ -60,7 +60,7 @@ export class NotificationService {
     });
     const saved = await created.save();
     const dto = this.toDto(saved);
-    this.gateway.sendToUser(userId, dto);
+    this.gateway.sendNewNotification(userId, dto);
     return dto;
   }
 
@@ -98,16 +98,17 @@ export class NotificationService {
       throw new NotFoundException('Notification not found');
     }
     const dto = this.toDto(notification);
-    this.gateway.sendToUser(userId, { ...dto, readAt: dto.readAt || new Date() });
+    this.gateway.sendRead(userId, dto.id);
     return dto;
   }
 
   async markAllRead(userId: string) {
-    await this.notificationModel.updateMany(
+    const res = await this.notificationModel.updateMany(
       { userId, readAt: null },
       { $set: { readAt: new Date() } },
     );
-    return { updated: true };
+    this.gateway.sendReadAll(userId);
+    return { updated: true, matched: res.matchedCount ?? res.modifiedCount };
   }
 
   private toDto(notification: any): NotificationDto {

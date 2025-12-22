@@ -57,8 +57,16 @@ export class NotificationsGateway
     }
   }
 
-  sendToUser(userId: string, notification: NotificationDto) {
+  sendNewNotification(userId: string, notification: NotificationDto) {
     this.server.to(this.userRoom(userId)).emit('notifications:new', notification);
+  }
+
+  sendRead(userId: string, notificationId: string) {
+    this.server.to(this.userRoom(userId)).emit('notifications:read', notificationId);
+  }
+
+  sendReadAll(userId: string) {
+    this.server.to(this.userRoom(userId)).emit('notifications:read-all');
   }
 
   private async authenticate(client: Socket): Promise<string> {
