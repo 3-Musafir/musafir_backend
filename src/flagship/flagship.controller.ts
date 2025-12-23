@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -56,10 +57,19 @@ export class FlagshipController {
   async create(
     @Body() createFlagshipDto: CreateFlagshipDto,
     @Req() req: AuthenticatedRequest,
-  ) { 
-    createFlagshipDto.created_By = req.user._id.toString();
-    const flagShip = await this.flagshipService.create(createFlagshipDto);
-    return successResponse(flagShip, 'Flagship Created', 201);
+  ) {
+    try {
+      createFlagshipDto.created_By = req.user._id.toString();
+      const flagShip = await this.flagshipService.create(createFlagshipDto);
+      return successResponse(flagShip, 'Flagship Created', 201);
+    } catch (error) {
+      // Return detailed error message for validation errors
+      if (error.name === 'ValidationError') {
+        const messages = Object.values(error.errors).map((err: any) => err.message);
+        throw new BadRequestException(messages.join(', '));
+      }
+      throw error;
+    }
   }
 
   @Get()
