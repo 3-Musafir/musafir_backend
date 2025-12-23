@@ -5,16 +5,15 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Patch,
   Param,
+  Patch,
   Post,
   Put,
-  Query,
+  Query,    
   Req,
-  UseGuards,
   UploadedFiles,
-  UseInterceptors,
-  UploadedFile,
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,20 +22,20 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { successResponse } from '../constants/response';
 import { CreateFlagshipDto } from './dto/create-flagship.dto';
 import { UpdateFlagshipDto } from './dto/update-flagship.dto';
-import { successResponse } from '../constants/response';
 import { FlagshipService } from './flagship.service';
 
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { GetUser } from 'src/auth/decorators/user.decorator';
+import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { AuthenticatedRequest } from '../user/interfaces/authenticated-request';
 import { FlagshipFilterDto } from './dto/get-flagship.dto';
-import { Flagship } from './interfaces/flagship.interface';
-import { GetUser } from 'src/auth/decorators/user.decorator';
-import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
-import { User } from 'src/user/interfaces/user.interface';
 import { TripQueryDto } from './dto/trip-query.dto';
-import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Flagship } from './interfaces/flagship.interface';
 
 @ApiTags('Flagship')
 @Controller('flagship')
@@ -57,7 +56,7 @@ export class FlagshipController {
   async create(
     @Body() createFlagshipDto: CreateFlagshipDto,
     @Req() req: AuthenticatedRequest,
-  ) {
+  ) { 
     createFlagshipDto.created_By = req.user._id.toString();
     const flagShip = await this.flagshipService.create(createFlagshipDto);
     return successResponse(flagShip, 'Flagship Created', 201);

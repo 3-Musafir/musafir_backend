@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { FlagshipModule } from './flagship/flagship.module';
 import { TripModule } from './trip/trip.module';
 import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './auth/guards/auth.guard';
 import { PermissionGuard } from './auth/guards/permission.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { RegistrationModule } from './registration/registration.module';
@@ -42,6 +43,10 @@ if (!mongoUri) {
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard, // Must run first to attach user
+    },
     {
       provide: APP_GUARD,
       useClass: PermissionGuard,
