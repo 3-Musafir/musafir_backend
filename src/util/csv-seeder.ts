@@ -185,6 +185,13 @@ export async function seedFromCSV() {
 
     const roles = parseRoles(r.roles);
     const verification = parseJsonObject(r.verification);
+    
+    // Ensure verification has a status field, default to 'verified' for seeded users
+    if (!verification.status) {
+      verification.status = 'verified';
+      verification.RequestCall = false;
+      verification.VerificationDate = new Date();
+    }
 
     // Upsert by legacyUserKey first; fallback by email if provided
     const query = email ? { $or: [{ legacyUserKey }, { email }] } : { legacyUserKey };

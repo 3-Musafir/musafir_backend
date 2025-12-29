@@ -114,7 +114,11 @@ export const UserSchema = new Schema(
 
     emailVerified: { type: Boolean, required: false, default: false },
 
-    verification: { type: Object, required: false, default: {} },
+    verification: { 
+      type: VerificationSchema, 
+      required: false, 
+      default: () => ({ status: 'unverified', RequestCall: false }) 
+    },
 
     discountApplicable: { type: Number, required: false, default: 0 },
 
