@@ -18,6 +18,7 @@ import {
   RequestRefundDto,
 } from './dto/payment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @ApiTags('payment')
 @Controller('payment')
@@ -52,6 +53,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Payment ID' })
   @ApiOkResponse({})
+  @Roles('admin')
   getPayment(@Param('id') id: string) {
     return this.paymentService.getPayment(id);
   }
@@ -60,6 +62,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Pending Payments' })
   @ApiOkResponse({})
+  @Roles('admin')
   getPendingPayments() {
     return this.paymentService.getPendingPayments();
   }
@@ -68,6 +71,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Completed Payments' })
   @ApiOkResponse({})
+  @Roles('admin')
   getCompletedPayments() {
     return this.paymentService.getCompletedPayments();
   }
@@ -92,6 +96,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Refunds' })
   @ApiOkResponse({})
+  @Roles('admin')
   getRefunds() {
     return this.paymentService.getRefunds();
   }
@@ -100,6 +105,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Refund' })
   @ApiOkResponse({})
+  @Roles('admin')
   approveRefund(@Param('id') id: string) {
     return this.paymentService.approveRefund(id);
   }
@@ -108,6 +114,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject Refund' })
   @ApiOkResponse({})
+  @Roles('admin')
   rejectRefund(@Param('id') id: string) {
     return this.paymentService.rejectRefund(id);
   }
@@ -128,6 +135,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Payment' })
   @ApiOkResponse({})
+  @Roles('admin')
   approvePayment(@Param('id') id: string) {
     return this.paymentService.approvePayment(id);
   }
@@ -136,6 +144,7 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject Payment' })
   @ApiOkResponse({})
+  @Roles('admin')
   rejectPayment(@Param('id') id: string) {
     return this.paymentService.rejectPayment(id);
   }

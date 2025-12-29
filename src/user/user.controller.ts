@@ -39,6 +39,7 @@ import { VerifyUserDto } from './dto/verify-user.dto';
 import { AuthenticatedRequest } from './interfaces/authenticated-request';
 import { errorResponse, successResponse } from '../constants/response';
 import { GetUser } from 'src/auth/decorators/user.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
 import { User } from './interfaces/user.interface';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from 'src/auth/decorators/roles.decorator';
@@ -48,6 +49,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 export class UserController {
   constructor(private readonly userService: UserService) { }
 
+  @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register user' })
@@ -56,6 +58,7 @@ export class UserController {
     return await this.userService.create(createUserDto);
   }
 
+  @Public()
   @Post('google')
   async googleLogin(
     @Req() req: Request,
@@ -64,6 +67,7 @@ export class UserController {
     return await this.userService.createEmailUser(body, req);
   }
 
+  @Public()
   @Post('create')
   async googleUserCreate(
     @Req() req: Request,
@@ -72,6 +76,7 @@ export class UserController {
     return this.userService.createGoogleUser(createUserDto, req);
   }
 
+  @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify Email' })
@@ -82,6 +87,7 @@ export class UserController {
     return await this.userService.verifyEmail(req, password, verificationId);
   }
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login User' })
@@ -90,11 +96,13 @@ export class UserController {
     return await this.userService.login(req, loginUserDto);
   }
 
+  @Public()
   @Get('check-email-availability')
   async checkEmailAvailability(@Query('email') email: string) {
     return await this.userService.checkEmailAvailability(email);
   }
 
+  @Public()
   @Post('refresh-access-token')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Refresh Access Token with refresh token' })
@@ -105,6 +113,7 @@ export class UserController {
     return await this.userService.refreshAccessToken(refreshAccessTokenDto);
   }
 
+  @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Forgot password' })
@@ -116,6 +125,7 @@ export class UserController {
     return await this.userService.forgotPassword(req, createForgotPasswordDto);
   }
 
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password after verify reset password' })

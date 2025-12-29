@@ -584,18 +584,7 @@ export class FlagshipService {
       .exec();
 
     const processedFlagships = await Promise.all(
-      pastTrips.map(async (flagship) => {
-        const flagshipObj = flagship.toObject();
-        if (flagship.images && flagship.images.length > 0) {
-          const imageUrls = await Promise.all(
-            flagship.images.map(async (imageKey) => {
-              return await this.storageService.getSignedUrl(imageKey);
-            }),
-          );
-          flagshipObj.images = imageUrls;
-        }
-        return flagshipObj;
-      }),
+      pastTrips.map(async (flagship) => this.attachSignedImages(flagship)),
     );
 
     return processedFlagships;
@@ -608,18 +597,7 @@ export class FlagshipService {
     });
 
     const processedFlagships = await Promise.all(
-      liveTrips.map(async (flagship) => {
-        const flagshipObj = flagship.toObject();
-        if (flagship.images && flagship.images.length > 0) {
-          const imageUrls = await Promise.all(
-            flagship.images.map(async (imageKey) => {
-              return await this.storageService.getSignedUrl(imageKey);
-            }),
-          );
-          flagshipObj.images = imageUrls;
-        }
-        return flagshipObj;
-      }),
+      liveTrips.map(async (flagship) => this.attachSignedImages(flagship)),
     );
 
     return processedFlagships;
@@ -631,20 +609,33 @@ export class FlagshipService {
     });
 
     const processedFlagships = await Promise.all(
-      upcomingTrips.map(async (flagship) => {
-        const flagshipObj = flagship.toObject();
-        if (flagship.images && flagship.images.length > 0) {
-          const imageUrls = await Promise.all(
-            flagship.images.map(async (imageKey) => {
-              return await this.storageService.getSignedUrl(imageKey);
-            }),
-          );
-          flagshipObj.images = imageUrls;
-        }
-        return flagshipObj;
-      }),
+      upcomingTrips.map(async (flagship) => this.attachSignedImages(flagship)),
     );
 
     return processedFlagships;
+  }
+
+  /**
+   * Safely attach signed image URLs; on failure, fall back to original keys.
+   */
+  private async attachSignedImages(flagship: any) {
+    const flagshipObj = flagship.toObject();
+
+    if (flagship.images && flagship.images.length > 0) {
+      const imageUrls = await Promise.all(
+        flagship.images.map(async (imageKey) => {
+          try {
+            return await this.storageService.getSignedUrl(imageKey);
+          } catch (error) {
+            // Avoid hard-failing if signing fails (e.g., missing AWS creds).
+            console.error('Failed to sign image URL', { imageKey, error });
+            return imageKey;
+          }
+        }),
+      );
+      flagshipObj.images = imageUrls;
+    }
+
+    return flagshipObj;
   }
 }

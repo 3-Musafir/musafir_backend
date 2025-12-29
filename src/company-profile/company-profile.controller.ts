@@ -21,12 +21,14 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { successResponse } from 'src/constants/response';
 import { CompanyProfileService } from './company-profile.service';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
+import { Public } from 'src/auth/decorators/public.decorator';
 
 @ApiTags('CompanyProfile')
 @Controller('company-profile')
 export class CompanyProfileController {
   constructor(private readonly companyProfileService: CompanyProfileService) { }
 
+  @Public()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get company profile for public pages' })

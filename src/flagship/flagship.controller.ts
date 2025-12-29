@@ -33,6 +33,7 @@ import { AuthenticatedRequest } from '../user/interfaces/authenticated-request';
 import { FlagshipFilterDto } from './dto/get-flagship.dto';
 import { Flagship } from './interfaces/flagship.interface';
 import { GetUser } from 'src/auth/decorators/user.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { User } from 'src/user/interfaces/user.interface';
 import { TripQueryDto } from './dto/trip-query.dto';
@@ -63,6 +64,7 @@ export class FlagshipController {
     return successResponse(flagShip, 'Flagship Created', 201);
   }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Get all flagships with filtering options' })
   @ApiResponse({
