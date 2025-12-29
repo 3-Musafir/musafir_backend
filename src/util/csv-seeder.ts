@@ -6,6 +6,7 @@ import csv from 'csv-parser';
 import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { UserSchema } from 'src/user/schemas/user.schema';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 // Models
 let User: any;
@@ -133,7 +134,7 @@ export async function seedFromCSV() {
       referralID: 'SEEDER',
       roles: ['admin'],
       emailVerified: true,
-      verification: { status: 'verified', RequestCall: false },
+      verification: { status: VerificationStatus.VERIFIED, RequestCall: false },
     });
   }
 
@@ -188,7 +189,7 @@ export async function seedFromCSV() {
     
     // Ensure verification has a status field, default to 'verified' for seeded users
     if (!verification.status) {
-      verification.status = 'verified';
+      verification.status = VerificationStatus.VERIFIED;
       verification.RequestCall = false;
       verification.VerificationDate = new Date();
     }

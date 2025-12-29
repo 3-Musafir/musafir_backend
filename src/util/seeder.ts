@@ -11,6 +11,7 @@ import { RatingSchema } from 'src/Rating/schemas/rating.schema';
 import { RefundSchema } from 'src/payment/schema/refund.schema';
 import { RefreshTokenSchema } from 'src/auth/schemas/refresh-token.schema';
 import { FaqSchema } from 'src/FAQ/schemas/faq.schema';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 const User = mongoose.model('users', UserSchema);
 const Flagship = mongoose.model('flagships', FlagshipSchema);
@@ -41,7 +42,7 @@ export async function seed() {
       gender: 'other',
       roles: ['admin'],
       emailVerified: true,
-      verification: { status: 'verified', RequestCall: false },
+      verification: { status: VerificationStatus.VERIFIED, RequestCall: false },
     });
     console.log(`Seeded admin user ${adminEmail}`);
   }

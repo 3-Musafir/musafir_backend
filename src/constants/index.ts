@@ -1,2 +1,5 @@
-export const SECRET_KEY = process.env.JWT_SECRET;
-export const TOKEN_EXPIRY = process.env.JWT_EXPIRATION;
+/**
+ * Central export point for all application constants and enums
+ */
+export * from './verification-status.enum';
+export * from './response';

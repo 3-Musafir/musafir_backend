@@ -27,6 +27,7 @@ import {
 } from './dto/reset-password.dto';
 import { VerifyUserDto } from './dto/verify-user.dto';
 import { User, UserDocument } from './interfaces/user.interface';
+import { VerificationStatus } from '../constants/verification-status.enum';
 
 @Injectable()
 export class UserService {
@@ -92,7 +93,7 @@ export class UserService {
   private resolveVerifiedReferrer(referralID: string) {
     return this.userModel.findOne({
       referralID,
-      'verification.status': 'verified',
+      'verification.status': VerificationStatus.VERIFIED,
     });
   }
 
@@ -123,7 +124,7 @@ export class UserService {
     await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
     user.referralID = generateUniqueCode();
     user.verification.verificationID = v4();
-    user.verification.status = 'unverified'; // @TODO: Make these statuses enum in constants file
+    user.verification.status = VerificationStatus.UNVERIFIED;
     const password = createUserDto.password;
     await this.mailService.sendEmailVerification(user.email, password);
     const savedUser = await user.save();
@@ -143,7 +144,7 @@ export class UserService {
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
-      user.verification.status = 'unverified';
+      user.verification.status = VerificationStatus.UNVERIFIED;
       await user.save();
     }
     const userWithStatus = this.addProfileStatus(user);
@@ -165,7 +166,7 @@ export class UserService {
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
       user.verification.verificationID = v4();
-      user.verification.status = 'unverified';
+      user.verification.status = VerificationStatus.UNVERIFIED;
       await user.save();
     }
     const userWithStatus = this.addProfileStatus(user);
@@ -347,7 +348,7 @@ export class UserService {
     // Preserve existing verification status; do not auto-verify on email confirm
     if (!user.verification?.status) {
       user.verification = user.verification || {};
-      user.verification.status = 'unverified';
+      user.verification.status = VerificationStatus.UNVERIFIED;
     }
 
     await user.save();
@@ -412,7 +413,7 @@ export class UserService {
   async findByReferralId(refferal: string): Promise<User> {
     const user = await this.userModel.findOne({
       referralID: refferal,
-      'verification.status': 'verified',
+      'verification.status': VerificationStatus.VERIFIED,
     });
     if (!user) {
       throw new BadRequestException('Bad request.');
@@ -553,7 +554,7 @@ export class UserService {
         verifyUser.referral2,
       ];
     }
-    user.verification.status = 'verified';
+    user.verification.status = VerificationStatus.VERIFIED;
     user.verification.verificationDate = new Date();
     user.markModified('verification');
     const savedUser = await user.save();
@@ -583,7 +584,7 @@ export class UserService {
       user.verification.videoLink = verifyUser.videoUrl;
     }
     user.verification.VerificationRequestDate = new Date();
-    user.verification.status = 'pending';
+    user.verification.status = VerificationStatus.PENDING;
     user.markModified('verification');
     return await user.save();
   }
@@ -594,7 +595,7 @@ export class UserService {
 
   async getUserData(user: User): Promise<User> {
     const verifiedByMe = await this.userModel.countDocuments({
-      'verification.status': 'verified',
+      'verification.status': VerificationStatus.VERIFIED,
       'verification.referralIDs': user.referralID,
     });
 
@@ -608,7 +609,7 @@ export class UserService {
 
   async unverifiedUsers(search?: string) {
     const query: any = {
-      'verification.status': 'unverified',
+      'verification.status': VerificationStatus.UNVERIFIED,
       roles: { $ne: 'admin' },
     };
 
@@ -629,7 +630,7 @@ export class UserService {
 
   async verifiedUsers(search?: string) {
     const query: any = {
-      'verification.status': 'verified',
+      'verification.status': VerificationStatus.VERIFIED,
       roles: { $ne: 'admin' },
     };
 
@@ -650,7 +651,7 @@ export class UserService {
 
   async pendingVerificationUsers(search?: string) {
     const query: any = {
-      'verification.status': 'pending',
+      'verification.status': VerificationStatus.PENDING,
       roles: { $ne: 'admin' },
     };
 
@@ -693,9 +694,9 @@ export class UserService {
       .lean();
 
     const groupedUsers = {
-      unverified: allUsers.filter(user => user.verification.status === 'unverified'),
-      pendingVerification: allUsers.filter(user => user.verification.status === 'pending'),
-      verified: allUsers.filter(user => user.verification.status === 'verified'),
+      unverified: allUsers.filter(user => user.verification.status === VerificationStatus.UNVERIFIED),
+      pendingVerification: allUsers.filter(user => user.verification.status === VerificationStatus.PENDING),
+      verified: allUsers.filter(user => user.verification.status === VerificationStatus.VERIFIED),
     };
 
     return groupedUsers;
@@ -757,7 +758,7 @@ export class UserService {
   private async findByVerification(verification: string): Promise<User> {
     const user = await this.userModel.findOne({
       'verification.verificationID': verification,
-      'verification.status': 'unverified',
+      'verification.status': VerificationStatus.UNVERIFIED,
     });
     if (!user) {
       throw new BadRequestException('Bad request.');
@@ -882,7 +883,7 @@ export class UserService {
     
     // Update verification status
     await this.userModel.findByIdAndUpdate(userId, {
-      'verification.status': 'verified',
+      'verification.status': VerificationStatus.VERIFIED,
     });
 
     // Send verification approved email if user has an email
@@ -907,7 +908,7 @@ export class UserService {
     
     // Update verification status
     await this.userModel.findByIdAndUpdate(userId, {
-      'verification.status': 'rejected',
+      'verification.status': VerificationStatus.REJECTED,
     });
 
     // Send verification rejected email if user has an email
@@ -941,7 +942,7 @@ export class UserService {
         video.mimetype,
       );
       user.verification.videoStorageKey = videoKey;
-      user.verification.status = 'pending';
+      user.verification.status = VerificationStatus.PENDING;
       return await user.save();
     } catch (error) {
       throw new Error('Failed to upload video: ' + error.message);

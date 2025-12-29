@@ -1,6 +1,7 @@
 import * as bcrypt from 'bcrypt';
 import { Schema } from 'mongoose';
 import * as validator from 'validator';
+import { VerificationStatus, getVerificationStatusValues } from '../../constants/verification-status.enum';
 
 function transformValue(doc, ret: { [key: string]: any }) {
   delete ret.password;
@@ -12,7 +13,7 @@ interface VerificationSchema {
   VerificationID?: string;
   EncodedVideo?: string;
   ReferralIDs?: string[];
-  status?: string;
+  status?: VerificationStatus;
   VideoLink?: string;
   videoStorageKey?: string;
   VerificationDate?: Date;
@@ -26,8 +27,8 @@ const VerificationSchema = new Schema<VerificationSchema>({
   ReferralIDs: [{ type: String, required: false }],
   status: {
     type: String,
-    enum: ['unverified', 'pending', 'verified', 'rejected'],
-    default: 'unverified',
+    enum: getVerificationStatusValues(),
+    default: VerificationStatus.UNVERIFIED,
   },
   RequestCall: { type: Boolean, required: false },
   VideoLink: { type: String, required: false },
@@ -117,7 +118,7 @@ export const UserSchema = new Schema(
     verification: { 
       type: VerificationSchema, 
       required: false, 
-      default: () => ({ status: 'unverified', RequestCall: false }) 
+      default: () => ({ status: VerificationStatus.UNVERIFIED, RequestCall: false }) 
     },
 
     discountApplicable: { type: Number, required: false, default: 0 },

@@ -1,10 +1,11 @@
 import { Document, Types } from 'mongoose';
+import { VerificationStatus } from '../../constants/verification-status.enum';
 
 export interface VerificationSubSchema {
   verificationID?: string;
   encodedVideo?: string;
   referralIDs?: string[];
-  status?: 'unverified' | 'pending' | 'verified' | 'rejected';
+  status?: VerificationStatus;
   videoLink?: string;
   videoStorageKey?: string;
   verificationDate?: Date;

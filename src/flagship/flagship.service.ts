@@ -20,6 +20,7 @@ import { successResponse, errorResponse } from '../constants/response';
 import { StorageService } from 'src/storage/storageService';
 import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 @Injectable()
 export class FlagshipService {
@@ -314,7 +315,7 @@ export class FlagshipService {
         model: 'User',
         match: {
           ...searchCriteria,
-          'verification.status': 'verified',
+          'verification.status': VerificationStatus.VERIFIED,
         },
       })
       .exec();
