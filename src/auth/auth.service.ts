@@ -66,7 +66,6 @@ export class AuthService {
 
   public async varifyToken(token: string) {
     const secretKey: string = process.env.JWT_SECRET;
-    console.log(secretKey, 'secretKey');
     
     try {
       const verificationResponse: JwtPayload = verify(
@@ -79,7 +78,6 @@ export class AuthService {
       if (!findUser) return errorResponse({statusCode: 401, message: `User not found`});
       return successResponse(findUser,'User Found');
     } catch (e) {
-      console.log(e);
       return errorResponse({statusCode: 401, message: e.message });
     }
   }
@@ -100,10 +98,12 @@ export class AuthService {
     if (request.query.token) {
       token = request.body.token.replace(' ', '');
     }
+    
     const cryptr = new Cryptr(process.env.ENCRYPT_JWT_SECRET);
     if (token) {
       try {
-        token = cryptr.decrypt(token);
+        const decrypted = cryptr.decrypt(token);
+        token = decrypted;
       } catch (err) {
         throw new BadRequestException('Bad request.');
       }

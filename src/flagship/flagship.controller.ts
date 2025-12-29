@@ -1,20 +1,20 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
-  Patch,
   Param,
+  Patch,
   Post,
   Put,
-  Query,
+  Query,    
   Req,
-  UseGuards,
   UploadedFiles,
-  UseInterceptors,
-  UploadedFile,
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,21 +23,28 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { successResponse } from '../constants/response';
 import { CreateFlagshipDto } from './dto/create-flagship.dto';
 import { UpdateFlagshipDto } from './dto/update-flagship.dto';
-import { successResponse } from '../constants/response';
 import { FlagshipService } from './flagship.service';
 
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { GetUser } from 'src/auth/decorators/user.decorator';
+import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { AuthenticatedRequest } from '../user/interfaces/authenticated-request';
 import { FlagshipFilterDto } from './dto/get-flagship.dto';
+<<<<<<< HEAD
 import { Flagship } from './interfaces/flagship.interface';
 import { GetUser } from 'src/auth/decorators/user.decorator';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { User } from 'src/user/interfaces/user.interface';
+=======
+>>>>>>> d6fb2638b140d0cd5c9d80a6680aba2caa2adccc
 import { TripQueryDto } from './dto/trip-query.dto';
-import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Flagship } from './interfaces/flagship.interface';
 
 @ApiTags('Flagship')
 @Controller('flagship')
@@ -59,9 +66,18 @@ export class FlagshipController {
     @Body() createFlagshipDto: CreateFlagshipDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    createFlagshipDto.created_By = req.user._id.toString();
-    const flagShip = await this.flagshipService.create(createFlagshipDto);
-    return successResponse(flagShip, 'Flagship Created', 201);
+    try {
+      createFlagshipDto.created_By = req.user._id.toString();
+      const flagShip = await this.flagshipService.create(createFlagshipDto);
+      return successResponse(flagShip, 'Flagship Created', 201);
+    } catch (error) {
+      // Return detailed error message for validation errors
+      if (error.name === 'ValidationError') {
+        const messages = Object.values(error.errors).map((err: any) => err.message);
+        throw new BadRequestException(messages.join(', '));
+      }
+      throw error;
+    }
   }
 
   @Public()

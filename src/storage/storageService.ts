@@ -15,17 +15,22 @@ export class StorageService {
   private bucket: string;
 
   constructor(private configService: ConfigService) {
+    const region = this.configService.get<string>('AWS_REGION');
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const bucketName = this.configService.get<string>('AWS_BUCKET_NAME');
+    
+
     this.s3 = new S3Client({
-      region: this.configService.get<string>('AWS_REGION'),
+      region: region,
       credentials: {
-        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+        accessKeyId: accessKeyId,
         secretAccessKey: this.configService.get<string>(
           'AWS_SECRET_ACCESS_KEY',
         ),
       },
     });
 
-    this.bucket = this.configService.get<string>('AWS_BUCKET_NAME');
+    this.bucket = bucketName;
   }
 
   async uploadFile(
@@ -33,16 +38,21 @@ export class StorageService {
     buffer: Buffer,
     mimetype: string,
   ): Promise<string> {
-    await this.s3.send(
-      new PutObjectCommand({
+
+    try {
+      const command = new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
         Body: buffer,
         ContentType: mimetype,
-      }),
-    );
+      });
 
-    return key;
+      const response = await this.s3.send(command);
+
+      return key;
+    } catch (error: any) {
+      throw new Error(`S3 Upload failed for ${key}: ${error.message}`);
+    }
   }
 
   async deleteFile(key: string): Promise<void> {

@@ -29,6 +29,7 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsString()
+  @ValidateIf((o) => o.profileImg && o.profileImg.length > 0)
   @Matches(/^(https?:\/\/|data:image\/[a-zA-Z]+;base64,).+/i, {
     message: 'Profile image must be an http(s) URL or data URL',
   })

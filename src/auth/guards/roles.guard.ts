@@ -15,12 +15,16 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!requiredRoles || requiredRoles.length === 0) return true;
+    
+    if (!requiredRoles || requiredRoles.length === 0) {
+      return true;
+    }
 
     const request = context.switchToHttp().getRequest();
     const user = request.user;
+    
     if (!user) {
-      throw new ForbiddenException('User not found in request. JWT validation might have failed.');
+      throw new ForbiddenException('Authentication required. Please provide a valid access token.');
     }
 
     const userRoles: string[] = user?.roles ?? [];
@@ -28,6 +32,7 @@ export class RolesGuard implements CanActivate {
     if (!hasRole) {
       throw new ForbiddenException('Insufficient role to access this resource.');
     }
+    
     return true;
   }
 }
