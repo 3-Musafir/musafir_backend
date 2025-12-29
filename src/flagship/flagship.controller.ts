@@ -28,21 +28,14 @@ import { CreateFlagshipDto } from './dto/create-flagship.dto';
 import { UpdateFlagshipDto } from './dto/update-flagship.dto';
 import { FlagshipService } from './flagship.service';
 
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { GetUser } from 'src/auth/decorators/user.decorator';
-import { User } from 'src/user/interfaces/user.interface';
+import { Public } from 'src/auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { AuthenticatedRequest } from '../user/interfaces/authenticated-request';
-import { FlagshipFilterDto } from './dto/get-flagship.dto';
-<<<<<<< HEAD
-import { Flagship } from './interfaces/flagship.interface';
-import { GetUser } from 'src/auth/decorators/user.decorator';
-import { Public } from 'src/auth/decorators/public.decorator';
-import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { User } from 'src/user/interfaces/user.interface';
-=======
->>>>>>> d6fb2638b140d0cd5c9d80a6680aba2caa2adccc
+import { FlagshipFilterDto } from './dto/get-flagship.dto';
 import { TripQueryDto } from './dto/trip-query.dto';
 import { Flagship } from './interfaces/flagship.interface';
 
