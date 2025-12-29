@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsIn,
   IsISO8601,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -265,6 +266,38 @@ export class UpdateFlagshipDto {
   @ValidateNested({ each: true })
   @Type(() => String)
   detailedPlanDoc?: Express.Multer.File;
+
+  // Seat toggles and pricing
+  @ApiProperty({ required: false, description: 'Enable/disable gender split' })
+  @IsOptional()
+  @IsBoolean()
+  genderSplitEnabled?: boolean;
+
+  @ApiProperty({ required: false, description: 'Enable/disable city split' })
+  @IsOptional()
+  @IsBoolean()
+  citySplitEnabled?: boolean;
+
+  @ApiProperty({ required: false, description: 'Enable/disable mattress split' })
+  @IsOptional()
+  @IsBoolean()
+  mattressSplitEnabled?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: 'Delta subtracted from base seat price when mattress split is enabled',
+  })
+  @IsOptional()
+  @IsNumber()
+  mattressPriceDelta?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Absolute early-bird price override (applied before add-ons)',
+  })
+  @IsOptional()
+  @IsNumber()
+  earlyBirdPrice?: number;
   
   // Seats
   @ApiProperty({ example: 98, description: 'Total capacity' })

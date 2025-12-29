@@ -40,6 +40,11 @@ export class Flagship {
   readonly citySeats: object;
   readonly bedSeats: number;
   readonly mattressSeats: number;
+  readonly genderSplitEnabled?: boolean;
+  readonly citySplitEnabled?: boolean;
+  readonly mattressSplitEnabled?: boolean;
+  readonly mattressPriceDelta?: number;
+  readonly earlyBirdPrice?: number;
 
   // Discounts
   readonly discounts?: {
