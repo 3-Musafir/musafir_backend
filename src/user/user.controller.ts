@@ -43,6 +43,8 @@ import { Public } from 'src/auth/decorators/public.decorator';
 import { User } from './interfaces/user.interface';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { UpdateVerificationStatusDto } from './dto/update-verification-status.dto';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 @ApiTags('User')
 @Controller('user')
@@ -325,6 +327,34 @@ export class UserController {
   @ApiOkResponse({})
   rejectUser(@Param('id') id: string) {
     return this.userService.rejectUser(id);
+  }
+
+  @Patch('verification-status/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update user verification status (admin override)' })
+  @ApiOkResponse({})
+  async updateVerificationStatus(
+    @Param('id') id: string,
+    @Body() body: UpdateVerificationStatusDto,
+  ) {
+    try {
+      const updatedUser = await this.userService.updateVerificationStatus(
+        id,
+        body.status,
+      );
+      return successResponse(
+        updatedUser,
+        body.status === VerificationStatus.VERIFIED
+          ? 'User verified successfully'
+          : 'User marked as unverified',
+        200,
+      );
+    } catch (error) {
+      return errorResponse(error);
+    }
   }
 
   @Post('find-user')

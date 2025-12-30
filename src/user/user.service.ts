@@ -900,6 +900,46 @@ export class UserService {
     }
   }
 
+  async updateVerificationStatus(userId: string, status: VerificationStatus) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (
+      status !== VerificationStatus.VERIFIED &&
+      status !== VerificationStatus.UNVERIFIED
+    ) {
+      throw new BadRequestException(
+        'Status must be either verified or unverified',
+      );
+    }
+
+    user.verification.status = status;
+    if (status === VerificationStatus.VERIFIED) {
+      user.verification.verificationDate = new Date();
+    } else {
+      user.verification.verificationDate = undefined;
+      user.verification.RequestCall = false;
+    }
+    user.markModified('verification');
+
+    const savedUser = await user.save();
+
+    if (status === VerificationStatus.VERIFIED && user.email) {
+      try {
+        await this.mailService.sendVerificationApprovedEmail(
+          user.email,
+          user.fullName || 'Musafir'
+        );
+      } catch (error) {
+        console.log('Failed to send verification approved email:', error);
+      }
+    }
+
+    return savedUser;
+  }
+
   async rejectUser(userId: string) {
     const user = await this.userModel.findById(userId);
     if (!user) {
