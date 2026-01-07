@@ -137,6 +137,7 @@ export class UserController {
     return await this.userService.resetPassword(resetPasswordDto);
   }
 
+  @Public()
   @Post('reset-password-jwt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using JWT token from email link' })
