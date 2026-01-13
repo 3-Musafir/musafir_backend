@@ -4,6 +4,10 @@ import { Model } from 'mongoose';
 import { Notification } from './interfaces/notification.interface';
 import { NotificationsGateway } from './notifications.gateway';
 import { NotificationDto, NotificationListResponse } from './dto/notification.dto';
+import {
+  ProfileStatus,
+  describeMissingProfileFields,
+} from 'src/user/profile-status.util';
 
 interface CreateNotificationPayload {
   title: string;
@@ -21,6 +25,8 @@ interface ListQuery {
 
 @Injectable()
 export class NotificationService {
+  private readonly profileReminderKind = 'profile_completion';
+
   constructor(
     @InjectModel('Notification')
     private readonly notificationModel: Model<Notification>,
@@ -57,6 +63,76 @@ export class NotificationService {
       type: payload.type || 'general',
       link: payload.link,
       metadata: payload.metadata,
+    });
+    const saved = await created.save();
+    const dto = this.toDto(saved);
+    this.gateway.sendNewNotification(userId, dto);
+    return dto;
+  }
+
+  async ensureProfileCompletionReminder(
+    userId: string,
+    profileStatus?: ProfileStatus,
+  ) {
+    if (!userId || !profileStatus) return null;
+
+    const missingFields =
+      profileStatus.requiredFor?.general && profileStatus.requiredFor.general.length > 0
+        ? profileStatus.requiredFor.general
+        : profileStatus.missing || [];
+
+    if (profileStatus.complete || missingFields.length === 0) {
+      await this.resolveProfileReminder(userId);
+      return null;
+    }
+
+    const missingLabels = describeMissingProfileFields(missingFields as any);
+    const message =
+      missingLabels.length > 0
+        ? `Please complete your profile details: ${missingLabels.join(', ')}.`
+        : 'Please complete your profile details.';
+    const metadata = {
+      kind: this.profileReminderKind,
+      missingFields,
+      missingFieldLabels: missingLabels,
+    };
+
+    const existing = await this.notificationModel.findOne({
+      userId,
+      'metadata.kind': this.profileReminderKind,
+    });
+
+    if (existing) {
+      const existingMissing = Array.isArray((existing as any).metadata?.missingFields)
+        ? (existing as any).metadata.missingFields
+        : [];
+      const needsUpdate =
+        !this.arraysEqual(existingMissing, missingFields) ||
+        existing.message !== message ||
+        !existing.title;
+
+      if (!needsUpdate && !existing.readAt) {
+        return this.toDto(existing);
+      }
+
+      existing.title = existing.title || 'Complete your profile';
+      existing.message = message;
+      existing.type = existing.type || 'general';
+      (existing as any).metadata = { ...(existing as any).metadata, ...metadata };
+      existing.readAt = null;
+
+      const saved = await existing.save();
+      const dto = this.toDto(saved);
+      this.gateway.sendNewNotification(userId, dto);
+      return dto;
+    }
+
+    const created = new this.notificationModel({
+      userId,
+      title: 'Complete your profile',
+      message,
+      type: 'general',
+      metadata,
     });
     const saved = await created.save();
     const dto = this.toDto(saved);
@@ -109,6 +185,23 @@ export class NotificationService {
     );
     this.gateway.sendReadAll(userId);
     return { updated: true, matched: res.matchedCount ?? res.modifiedCount };
+  }
+
+  private async resolveProfileReminder(userId: string) {
+    await this.notificationModel.updateMany(
+      { userId, 'metadata.kind': this.profileReminderKind, readAt: null },
+      { $set: { readAt: new Date() } },
+    );
+  }
+
+  private arraysEqual(a: string[], b: string[]) {
+    if (!Array.isArray(a) || !Array.isArray(b)) {
+      return false;
+    }
+    if (a.length !== b.length) {
+      return false;
+    }
+    return a.every((value, index) => value === b[index]);
   }
 
   private toDto(notification: any): NotificationDto {

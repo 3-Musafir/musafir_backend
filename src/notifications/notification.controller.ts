@@ -12,6 +12,7 @@ import { JwtAuthGuard } from 'src/auth/guards/auth.guard';
 import { AuthenticatedRequest } from 'src/user/interfaces/authenticated-request';
 import { NotificationService } from './notification.service';
 import { successResponse } from 'src/constants/response';
+import { buildProfileStatus } from 'src/user/profile-status.util';
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -30,6 +31,14 @@ export class NotificationController {
   ) {
     const user = (req as any)?.user;
     const parsedRead = read === 'true' ? true : read === 'false' ? false : undefined;
+    if (user?._id) {
+      const plainUser = typeof (user as any).toObject === 'function' ? (user as any).toObject() : user;
+      const profileStatus = buildProfileStatus(plainUser || {});
+      await this.notificationService.ensureProfileCompletionReminder(
+        String(plainUser._id),
+        profileStatus,
+      );
+    }
     const data = await this.notificationService.listForUser(user._id, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,

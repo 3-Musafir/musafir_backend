@@ -28,6 +28,10 @@ import {
 import { VerifyUserDto } from './dto/verify-user.dto';
 import { User, UserDocument } from './interfaces/user.interface';
 import { VerificationStatus } from '../constants/verification-status.enum';
+import {
+  buildProfileStatus,
+  isProfileComplete as isProfileCompleteUtil,
+} from './profile-status.util';
 
 @Injectable()
 export class UserService {
@@ -43,81 +47,11 @@ export class UserService {
   ) { }
 
   private isProfileComplete(user: Partial<User>) {
-    const digits = (value?: string) =>
-      typeof value === 'string' ? value.replace(/\D/g, '') : '';
-
-    const hasPhone = digits(user.phone || '').length >= 10;
-    const hasCnic = typeof user.cnic === 'string' && user.cnic.trim().length === 13;
-    const hasCity = Boolean(user.city);
-    const hasSocial = Boolean(user.socialLink);
-    const employmentStatus = (user as any).employmentStatus || 'unemployed';
-    const validStatus = ['student', 'employed', 'selfEmployed', 'unemployed'].includes(
-      employmentStatus as string,
-    );
-    const requiresWorkDetail = employmentStatus !== 'unemployed';
-    const hasWorkDetail = requiresWorkDetail ? Boolean(user.university) : true;
-    const hasGender = Boolean(user.gender);
-
-    return Boolean(hasPhone && hasCnic && hasCity && hasSocial && validStatus && hasWorkDetail && hasGender);
+    return isProfileCompleteUtil(user);
   }
 
   private getProfileStatus(user: Partial<User>) {
-    const digits = (value?: string) =>
-      typeof value === 'string' ? value.replace(/\D/g, '') : '';
-
-    const employmentStatus = (user as any).employmentStatus || 'unemployed';
-    const requiresWorkDetail = employmentStatus !== 'unemployed';
-
-    const checkField = {
-      phone: () => digits(user.phone || '').length >= 10,
-      cnic: () => typeof user.cnic === 'string' && user.cnic.trim().length === 13,
-      city: () => Boolean(user.city),
-      socialLink: () => Boolean(user.socialLink),
-      employmentStatus: () =>
-        ['student', 'employed', 'selfEmployed', 'unemployed'].includes(
-          employmentStatus as string,
-        ),
-      university: () => (requiresWorkDetail ? Boolean(user.university) : true),
-      gender: () => Boolean(user.gender),
-    };
-
-    const generalFields: (keyof typeof checkField)[] = [
-      'phone',
-      'cnic',
-      'city',
-      'socialLink',
-      'employmentStatus',
-      'university',
-      'gender',
-    ];
-
-    const flagshipFields: (keyof typeof checkField)[] = [
-      'phone',
-      'cnic',
-      'city',
-      'employmentStatus',
-      'university',
-      'gender',
-    ];
-
-    const verificationFields: (keyof typeof checkField)[] = ['phone', 'gender', 'socialLink'];
-
-    const missingFor = (fields: (keyof typeof checkField)[]) =>
-      fields.filter((field) => !checkField[field]());
-
-    const missing = missingFor(generalFields);
-    const flagshipMissing = missingFor(flagshipFields);
-    const verificationMissing = missingFor(verificationFields);
-
-    return {
-      complete: missing.length === 0,
-      missing,
-      requiredFor: {
-        general: missing,
-        flagshipRegistration: flagshipMissing,
-        verification: verificationMissing,
-      },
-    };
+    return buildProfileStatus(user);
   }
 
   addProfileStatus(user: any) {
