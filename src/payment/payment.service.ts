@@ -14,6 +14,7 @@ import { Refund } from './schema/refund.schema';
 import { Registration } from 'src/registration/interfaces/registration.interface';
 import { MailService } from 'src/mail/mail.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { NotificationService } from 'src/notifications/notification.service';
 
 @Injectable()
 export class PaymentService {
@@ -32,6 +33,7 @@ export class PaymentService {
     private readonly refundModel: Model<Refund>,
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
+    private readonly notificationService: NotificationService,
   ) { }
 
   private assertUserVerifiedForPayment(user: User) {
@@ -289,6 +291,18 @@ export class PaymentService {
             flagship.tripName,
             payment.createdAt
           );
+          // Also send an in-app notification
+          await this.notificationService.createForUser(String(user._id), {
+            title: 'Payment approved',
+            message: `Your payment for ${flagship.tripName} was approved. Your seat is confirmed.`,
+            type: 'payment',
+            metadata: {
+              paymentId: payment._id?.toString(),
+              registrationId: reg._id?.toString(),
+              flagshipId: flagship._id?.toString(),
+              amount: payment.amount,
+            },
+          });
         }
       }
     } catch (error) {

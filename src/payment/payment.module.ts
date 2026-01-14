@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { RefundSchema } from './schema/refund.schema';
 import { RegistrationSchema } from 'src/registration/schemas/registration.schema';
 import { MailModule } from 'src/mail/mail.module';
+import { NotificationModule } from 'src/notifications/notification.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { MailModule } from 'src/mail/mail.module';
     AuthModule,
     UserModule,
     MailModule,
+    NotificationModule,
   ],
   controllers: [PaymentController],
   providers: [PaymentService, StorageService, ConfigService],
