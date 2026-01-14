@@ -9,10 +9,10 @@ import { ApiProperty } from '@nestjs/swagger';
 export class VerifyUserDto {
   @ApiProperty({
     example: 'EL10BX',
-    description: 'Refferal code',
-    format: 'string',
-    minLength: 6,
-    maxLength: 6,
+  description: 'Refferal code',
+  format: 'string',
+  minLength: 6,
+  maxLength: 6,
   })
   @IsOptional()
   @IsString()
@@ -31,12 +31,22 @@ export class VerifyUserDto {
 
   @ApiProperty({
     example: 'instagram.com/username',
-    description: 'URL of an uploaded video',
-    format: 'string',
+  description: 'URL of an uploaded video',
+  format: 'string',
   })
   @IsOptional()
   @IsString()
   readonly videoUrl: string;
+
+  @ApiProperty({
+    example: '650f2f4d2f4d2f4d2f4d2f4d',
+    description: 'Flagship context for which verification is being requested',
+    format: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly flagshipId?: string;
 
   @ApiProperty({
     example: false,

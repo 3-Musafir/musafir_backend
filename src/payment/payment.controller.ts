@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -19,6 +20,9 @@ import {
 } from './dto/payment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/auth.guard';
+import { GetUser } from 'src/auth/decorators/user.decorator';
+import { User } from 'src/user/interfaces/user.interface';
 
 @ApiTags('payment')
 @Controller('payment')
@@ -123,12 +127,14 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create Payment' })
   @ApiOkResponse({})
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('screenshot'))
   createPayment(
     @Body() createPaymentDto: CreatePaymentDto,
     @UploadedFile() screenshot: Express.Multer.File,
+    @GetUser() user: User,
   ) {
-    return this.paymentService.createPayment(createPaymentDto, screenshot);
+    return this.paymentService.createPayment(createPaymentDto, screenshot, user);
   }
 
   @Patch('approve-payment/:id')

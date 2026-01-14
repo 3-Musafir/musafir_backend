@@ -6,6 +6,8 @@ export interface VerificationSubSchema {
   encodedVideo?: string;
   referralIDs?: string[];
   status?: VerificationStatus;
+  method?: string;
+  flagshipId?: string;
   videoLink?: string;
   videoStorageKey?: string;
   verificationDate?: Date;

@@ -32,6 +32,7 @@ import {
   buildProfileStatus,
   isProfileComplete as isProfileCompleteUtil,
 } from './profile-status.util';
+import { NotificationService } from 'src/notifications/notification.service';
 
 @Injectable()
 export class UserService {
@@ -44,6 +45,7 @@ export class UserService {
     private readonly mailService: MailService,
     private readonly authService: AuthService,
     private readonly storageService: StorageService,
+    private readonly notificationService: NotificationService,
   ) { }
 
   private isProfileComplete(user: Partial<User>) {
@@ -90,6 +92,7 @@ export class UserService {
     return this.userModel.findOne({
       referralID,
       'verification.status': VerificationStatus.VERIFIED,
+      roles: { $ne: 'admin' },
     });
   }
 
@@ -447,7 +450,35 @@ export class UserService {
       throw new BadRequestException('You cannot verify yourself.');
     }
 
-    return this.setUserVerified(applicantId, verifyUser);
+    const genders = [user1.gender, user2.gender];
+    const hasMale = genders.includes('male');
+    const hasFemale = genders.includes('female');
+    if (!hasMale || !hasFemale) {
+      throw new BadRequestException(
+        'Referral codes must include at least one male and one female verified Musafir.',
+      );
+    }
+
+    const saved = await this.setUserVerified(applicantId, verifyUser, {
+      method: 'referral',
+      flagshipId: verifyUser.flagshipId,
+    });
+
+    // Notify referrers their code was used successfully
+    const referrerIds = [user1._id?.toString(), user2._id?.toString()].filter(Boolean) as string[];
+    if (referrerIds.length > 0) {
+      await this.notificationService.createForUsers(referrerIds, {
+        title: 'Your referral verified a Musafir',
+        message: `${applicant.fullName || 'A Musafir'} has been verified using your referral code${verifyUser.flagshipId ? ` for flagship ${verifyUser.flagshipId}` : ''}.`,
+        type: 'referral',
+        metadata: {
+          applicantId: applicant._id?.toString(),
+          flagshipId: verifyUser.flagshipId,
+        },
+      });
+    }
+
+    return saved;
   }
 
   // Reset Password
@@ -542,7 +573,11 @@ export class UserService {
     }
   }
 
-  async setUserVerified(id: string, verifyUser: VerifyUserDto) {
+  async setUserVerified(
+    id: string,
+    verifyUser: VerifyUserDto,
+    options?: { method?: string; flagshipId?: string },
+  ) {
     const user = await this.userModel.findById(id);
     if (verifyUser.referral1 && verifyUser.referral2) {
       user.verification.referralIDs = [
@@ -552,6 +587,12 @@ export class UserService {
     }
     user.verification.status = VerificationStatus.VERIFIED;
     user.verification.verificationDate = new Date();
+    if (options?.method) {
+      user.verification.method = options.method;
+    }
+    if (verifyUser.flagshipId || options?.flagshipId) {
+      user.verification.flagshipId = options?.flagshipId || verifyUser.flagshipId;
+    }
     user.markModified('verification');
     const savedUser = await user.save();
 
@@ -573,16 +614,31 @@ export class UserService {
 
   async requestVerification(id: string, verifyUser: VerifyUserDto) {
     const user = await this.userModel.findById(id);
+    let method: string | undefined;
     if (verifyUser.requestCall === 'true') {
       user.verification.RequestCall = true;
+      method = 'call';
     }
     if (verifyUser.videoUrl) {
       user.verification.videoLink = verifyUser.videoUrl;
+      method = method || 'video';
+    }
+    if (verifyUser.flagshipId) {
+      user.verification.flagshipId = verifyUser.flagshipId;
     }
     user.verification.VerificationRequestDate = new Date();
     user.verification.status = VerificationStatus.PENDING;
+    if (method) {
+      user.verification.method = method;
+    }
     user.markModified('verification');
-    return await user.save();
+    const saved = await user.save();
+
+    if (verifyUser.requestCall === 'true') {
+      await this.notifyCommunityLeadsAboutCall(saved);
+    }
+
+    return saved;
   }
 
   findAll(): any {
@@ -961,6 +1017,27 @@ export class UserService {
     }
   }
 
+  private async notifyCommunityLeadsAboutCall(user: User) {
+    const leads = await this.userModel
+      .find({ roles: { $in: ['admin'] } })
+      .select('_id fullName email')
+      .lean();
+
+    const leadIds = leads.map((lead: any) => lead._id?.toString()).filter(Boolean);
+    if (leadIds.length === 0) return;
+
+    await this.notificationService.createForUsers(leadIds, {
+      title: 'Verification call requested',
+      message: `${user?.fullName || 'A Musafir'} requested an onboarding call for verification${(user as any)?.verification?.flagshipId ? ` (flagship ${(user as any).verification.flagshipId})` : ''}.`,
+      type: 'verification',
+      metadata: {
+        userId: (user as any)?._id?.toString?.(),
+        flagshipId: (user as any)?.verification?.flagshipId,
+        requestCall: true,
+      },
+    });
+  }
+
   async uploadVerificationVideo(
     video: Express.Multer.File,
     userId: string,
@@ -979,6 +1056,7 @@ export class UserService {
       );
       user.verification.videoStorageKey = videoKey;
       user.verification.status = VerificationStatus.PENDING;
+      user.verification.method = 'video';
       return await user.save();
     } catch (error) {
       throw new Error('Failed to upload video: ' + error.message);

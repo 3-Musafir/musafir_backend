@@ -14,6 +14,8 @@ interface VerificationSchema {
   EncodedVideo?: string;
   ReferralIDs?: string[];
   status?: VerificationStatus;
+  method?: string;
+  flagshipId?: string;
   VideoLink?: string;
   videoStorageKey?: string;
   VerificationDate?: Date;
@@ -30,6 +32,8 @@ const VerificationSchema = new Schema<VerificationSchema>({
     enum: getVerificationStatusValues(),
     default: VerificationStatus.UNVERIFIED,
   },
+  method: { type: String, required: false },
+  flagshipId: { type: String, required: false },
   RequestCall: { type: Boolean, required: false },
   VideoLink: { type: String, required: false },
   videoStorageKey: { type: String, required: false },

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { BankAccount, Payment } from './interface/payment.interface';
@@ -13,6 +13,7 @@ import { Flagship } from 'src/flagship/interfaces/flagship.interface';
 import { Refund } from './schema/refund.schema';
 import { Registration } from 'src/registration/interfaces/registration.interface';
 import { MailService } from 'src/mail/mail.service';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 @Injectable()
 export class PaymentService {
@@ -32,6 +33,27 @@ export class PaymentService {
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
   ) { }
+
+  private assertUserVerifiedForPayment(user: User) {
+    const status = (user as any)?.verification?.status;
+    if (status === VerificationStatus.VERIFIED) return;
+    if (status === VerificationStatus.PENDING) {
+      throw new BadRequestException({
+        message: 'Verification is pending. Please wait for approval before making a payment.',
+        code: 'verification_pending',
+      });
+    }
+    if (status === VerificationStatus.REJECTED) {
+      throw new BadRequestException({
+        message: 'Verification was rejected. Please re-apply before making a payment.',
+        code: 'verification_rejected',
+      });
+    }
+    throw new BadRequestException({
+      message: 'Verification required before making a payment.',
+      code: 'verification_required',
+    });
+  }
 
   private async updateUserTripStats(userId: string): Promise<void> {
     const attendedCount = await this.registrationModel.countDocuments({
@@ -151,11 +173,26 @@ export class PaymentService {
   async createPayment(
     createPaymentDto: CreatePaymentDto,
     screenshot: Express.Multer.File,
+    requester?: User,
   ): Promise<Payment> {
     // Get registration to find user ID
     const registration = await this.registrationModel.findById(createPaymentDto.registration);
     if (!registration) {
       throw new Error('Registration not found');
+    }
+
+    const registrationUserId = (registration as any).userId || (registration as any).user;
+
+    if (requester && registrationUserId && registrationUserId.toString() !== requester._id?.toString()) {
+      throw new ForbiddenException('You can only pay for your own registration.');
+    }
+
+    if (registrationUserId) {
+      const registrationUser = await this.user.findById(registrationUserId);
+      if (!registrationUser) {
+        throw new BadRequestException('User for registration not found.');
+      }
+      this.assertUserVerifiedForPayment(registrationUser);
     }
 
     // Use the discount provided in the DTO (0 if no discount applied)
@@ -200,53 +237,63 @@ export class PaymentService {
   }
 
   async approvePayment(id: string): Promise<Payment> {
-    const payment = await this.paymentModel.findByIdAndUpdate(
-      id,
-      { status: 'approved' },
-      { new: true },
-    );
+    const payment = await this.paymentModel.findById(id);
+    if (!payment) {
+      throw new BadRequestException('Payment not found');
+    }
 
-    if (payment && payment.registration) {
-      const registration = await this.registrationModel.findById(
-        payment.registration,
-      );
+    let registration: any = null;
+    if (payment.registration) {
+      registration = await this.registrationModel.findById(payment.registration);
+      const registrationUserId = registration?.userId || registration?.user;
+      if (registrationUserId) {
+        const registrationUser = await this.user.findById(registrationUserId);
+        if (registrationUser) {
+          this.assertUserVerifiedForPayment(registrationUser);
+        }
+      }
+    }
 
+    payment.status = 'approved';
+    await payment.save();
+
+    if (registration) {
       await this.registrationModel.findByIdAndUpdate(payment.registration, {
         isPaid: true,
         amountDue: registration.amountDue - payment.amount,
         status: 'confirmed',
       });
+    }
 
-      // Send payment approved email if user has an email
-      try {
-        // Get populated payment data for email
-        const populatedPayment = await this.paymentModel
-          .findById(id)
-          .populate({
-            path: 'registration',
-            populate: [{ path: 'user' }, { path: 'flagship' }],
-          })
-          .exec();
+    // Send payment approved email if user has an email
+    try {
+      // Get populated payment data for email
+      const populatedPayment = await this.paymentModel
+        .findById(id)
+        .populate({
+          path: 'registration',
+          populate: [{ path: 'user' }, { path: 'flagship' }],
+        })
+        .exec();
 
-        if (populatedPayment && populatedPayment.registration) {
-          const reg = populatedPayment.registration as any;
-          const user = reg.user;
-          const flagship = reg.flagship;
+      if (populatedPayment && populatedPayment.registration) {
+        const reg = populatedPayment.registration as any;
+        const user = reg.user;
+        const flagship = reg.flagship;
 
-          if (user && user.email && flagship) {
-            await this.mailService.sendPaymentApprovedEmail(
-              user.email,
-              user.fullName || 'Musafir',
-              payment.amount,
-              flagship.tripName,
-              payment.createdAt
-            );
-          }
+        if (user && user.email && flagship) {
+          await this.mailService.sendPaymentApprovedEmail(
+            user.email,
+            user.fullName || 'Musafir',
+            payment.amount,
+            flagship.tripName,
+            payment.createdAt
+          );
         }
-      } catch (error) {
-        console.log('Failed to send payment approved email:', error);
-        // Don't throw error - email failure shouldn't prevent payment approval
       }
+    } catch (error) {
+      console.log('Failed to send payment approved email:', error);
+      // Don't throw error - email failure shouldn't prevent payment approval
     }
 
     return payment;
