@@ -1,12 +1,12 @@
 export class Notification {
-  readonly _id: string;
-  readonly userId: string;
-  readonly title: string;
-  readonly message: string;
-  readonly type: string;
-  readonly link?: string;
-  readonly metadata?: Record<string, any>;
-  readonly readAt?: Date | null;
-  readonly createdAt?: Date;
-  readonly updatedAt?: Date;
+  _id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  link?: string;
+  metadata?: Record<string, any>;
+  readAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
