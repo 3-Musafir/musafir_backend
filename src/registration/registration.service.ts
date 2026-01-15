@@ -153,15 +153,21 @@ export class RegistrationService {
       await this.syncCompletedRegistrationsForUser(userId);
       await this.updateUserTripStats(userId);
 
+      const now = new Date();
       const registrations = await this.registrationModel.find({
         status: { $nin: ["completed", "refunded"] },
         userId: userId
       })
-        .populate('flagship')
+        .populate({
+          path: 'flagship',
+          match: { endDate: { $gte: now } },
+        })
         .exec();
 
+      const upcomingOnly = registrations.filter((r: any) => r?.flagship);
+
       return await Promise.all(
-        registrations.map(async (registration) => {
+        upcomingOnly.map(async (registration) => {
           if (registration.flagship.images && registration.flagship.images.length > 0) {
             const imageUrls = await Promise.all(
               registration.flagship.images.map(async (imageKey) => {

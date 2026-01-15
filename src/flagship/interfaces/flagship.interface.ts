@@ -8,7 +8,7 @@ export class Flagship {
   readonly category: string;
   readonly visibility: string;
   readonly days?: number;
-  readonly status?: 'live' | 'completed';
+  readonly status?: 'unpublished' | 'published' | 'completed';
   readonly packages?: object[];
   images?: string[];
   detailedPlan?: string;

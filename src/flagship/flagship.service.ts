@@ -73,9 +73,33 @@ export class FlagshipService {
       $regex: new RegExp(value, 'i'),
     });
 
+    const exactMatchFields = new Set([
+      'status',
+      'visibility',
+      'category',
+      'created_By',
+      'createdBy',
+    ]);
+
+    const dateFields = new Set(['startDate', 'endDate', 'registrationDeadline', 'advancePaymentDeadline', 'earlyBirdDeadline']);
+
     for (const key of Object.keys(filterDto)) {
       const value = filterDto[key];
       if (value !== undefined) {
+        if (key === 'includePast') {
+          continue;
+        }
+        if (dateFields.has(key) && typeof value === 'string') {
+          const asDate = new Date(value);
+          if (!Number.isNaN(asDate.getTime())) {
+            query[key] = asDate;
+            continue;
+          }
+        }
+        if (exactMatchFields.has(key)) {
+          query[key] = value;
+          continue;
+        }
         if (typeof value === 'string') {
           query[key] = buildStringQuery(value);
         } else if (typeof value === 'object' && value !== null) {
@@ -86,9 +110,12 @@ export class FlagshipService {
       }
     }
 
+    const sort: Record<string, 1 | -1> =
+      filterDto?.status === 'completed' ? { endDate: -1 } : { startDate: 1 };
+
     const flagships = await this.flagshipModel
       .find(query)
-      .sort({ createdAt: -1 })
+      .sort(sort)
       .populate('created_By')
       .exec();
 
@@ -110,8 +137,17 @@ export class FlagshipService {
     return processedFlagships;
   }
 
-  async findOne(id: string): Promise<Flagship> {
-    const flagship = await this.flagshipModel.findById(id).exec();
+  async findOne(
+    id: string,
+    options?: { restrictToPublishedPublic?: boolean },
+  ): Promise<Flagship> {
+    const query: any = { _id: id };
+    if (options?.restrictToPublishedPublic) {
+      query.visibility = 'public';
+      query.status = 'published';
+    }
+
+    const flagship = await this.flagshipModel.findOne(query).exec();
     if (!flagship) {
       throw new NotFoundException(`Flagship not found`);
     }
@@ -582,6 +618,7 @@ export class FlagshipService {
       .find({
         endDate: { $lt: currentDate },
       })
+      .sort({ endDate: -1 })
       .exec();
 
     const processedFlagships = await Promise.all(
@@ -592,10 +629,12 @@ export class FlagshipService {
   }
 
   async getLiveTrips() {
-    const liveTrips = await this.flagshipModel.find({
-      startDate: { $lte: new Date() },
-      endDate: { $gte: new Date() },
-    });
+    const liveTrips = await this.flagshipModel
+      .find({
+        startDate: { $lte: new Date() },
+        endDate: { $gte: new Date() },
+      })
+      .sort({ startDate: 1 });
 
     const processedFlagships = await Promise.all(
       liveTrips.map(async (flagship) => this.attachSignedImages(flagship)),
@@ -605,9 +644,11 @@ export class FlagshipService {
   }
 
   async getUpcomingTrips() {
-    const upcomingTrips = await this.flagshipModel.find({
-      startDate: { $gt: new Date() },
-    });
+    const upcomingTrips = await this.flagshipModel
+      .find({
+        startDate: { $gt: new Date() },
+      })
+      .sort({ startDate: 1 });
 
     const processedFlagships = await Promise.all(
       upcomingTrips.map(async (flagship) => this.attachSignedImages(flagship)),

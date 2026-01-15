@@ -33,6 +33,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { GetUser } from 'src/auth/decorators/user.decorator';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt.guard';
 import { AuthenticatedRequest } from '../user/interfaces/authenticated-request';
 import { User } from 'src/user/interfaces/user.interface';
 import { FlagshipFilterDto } from './dto/get-flagship.dto';
@@ -74,6 +75,7 @@ export class FlagshipController {
   }
 
   @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all flagships with filtering options' })
   @ApiResponse({
@@ -81,19 +83,35 @@ export class FlagshipController {
     description: 'Flagship records',
     type: [Flagship],
   })
-  async getFlagships(@Query() filterDto: FlagshipFilterDto): Promise<any> {
+  async getFlagships(
+    @GetUser() user: User,
+    @Query() filterDto: FlagshipFilterDto,
+  ): Promise<any> {
+    const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin');
+
+    // Non-admin callers should only be able to browse upcoming, public, published flagships
+    if (!isAdmin) {
+      filterDto.visibility = 'public';
+      filterDto.status = 'published';
+      filterDto.includePast = false;
+      (filterDto as any).endDate = { $gte: new Date() };
+    }
+
     const flagships = await this.flagshipService.getAllFlagships(filterDto);
     return successResponse(flagships, 'Flagship Data', HttpStatus.OK);
   }
 
+  @Public()
   @Get('getByID/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get one flagships' })
   @ApiOkResponse({})
-  @ApiBearerAuth()
-  findOne(@Param('id') id: string) {
-    return this.flagshipService.findOne(id);
+  findOne(@GetUser() user: User, @Param('id') id: string) {
+    const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin');
+    return this.flagshipService.findOne(id, {
+      restrictToPublishedPublic: !isAdmin,
+    });
   }
 
   @Put(':id')
@@ -284,29 +302,46 @@ export class FlagshipController {
   }
 
   @Get('past-trips')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get past trips' })
   @ApiOkResponse({})
+  @ApiBearerAuth()
   getPastTrips() {
     return this.flagshipService.getPastTrips();
   }
 
   @Get('live-trips')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get live trips' })
   @ApiOkResponse({})
+  @ApiBearerAuth()
   getLiveTrips() {
     return this.flagshipService.getLiveTrips();
   }
 
   @Get('upcoming-trips')
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get upcoming trips' })
   @ApiOkResponse({})
+  @ApiBearerAuth()
   getUpcomingTrips() {
     return this.flagshipService.getUpcomingTrips();
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get flagship by id (admin)' })
+  @ApiOkResponse({})
+  @ApiBearerAuth()
+  getFlagshipById(@Param('id') id: string) {
+    return this.flagshipService.findOne(id);
   }
 }

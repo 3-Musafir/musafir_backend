@@ -63,7 +63,7 @@ export class FlagshipFilterDto {
 
   @ApiPropertyOptional({
     description: 'status',
-    enum: ['live', 'completed'],
+    enum: ['unpublished', 'published', 'completed'],
   })
   @IsOptional()
   @IsString()
@@ -108,4 +108,12 @@ export class FlagshipFilterDto {
   @IsOptional()
   @Transform(({ value }) => (value === 'true' ? true : false))
   publish?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Include past flagships (endDate < now)',
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : false))
+  includePast?: boolean;
 }
