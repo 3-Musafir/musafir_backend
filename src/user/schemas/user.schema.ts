@@ -6,6 +6,35 @@ import { VerificationStatus, getVerificationStatusValues } from '../../constants
 function transformValue(doc, ret: { [key: string]: any }) {
   delete ret.password;
   delete ret.__v;
+
+  const verification = ret?.verification;
+  if (verification && typeof verification === 'object') {
+    if (verification.VerificationID && !verification.verificationID) {
+      verification.verificationID = verification.VerificationID;
+    }
+    if (Array.isArray(verification.ReferralIDs) && !verification.referralIDs) {
+      verification.referralIDs = verification.ReferralIDs;
+    }
+    if (verification.VideoLink && !verification.videoLink) {
+      verification.videoLink = verification.VideoLink;
+    }
+    if (verification.VerificationDate && !verification.verificationDate) {
+      verification.verificationDate = verification.VerificationDate;
+    }
+    if (
+      verification.VerificationRequestDate &&
+      !verification.verificationRequestDate
+    ) {
+      verification.verificationRequestDate = verification.VerificationRequestDate;
+    }
+    if (
+      typeof verification.RequestCall !== 'undefined' &&
+      typeof verification.requestCall === 'undefined'
+    ) {
+      verification.requestCall = verification.RequestCall;
+    }
+  }
+
   return ret;
 }
 

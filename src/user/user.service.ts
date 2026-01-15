@@ -56,10 +56,41 @@ export class UserService {
     return buildProfileStatus(user);
   }
 
+  private normalizeVerificationForResponse(user: any) {
+    const verification = user?.verification;
+    if (!verification || typeof verification !== 'object') return;
+
+    if (verification.VerificationID && !verification.verificationID) {
+      verification.verificationID = verification.VerificationID;
+    }
+    if (Array.isArray(verification.ReferralIDs) && !verification.referralIDs) {
+      verification.referralIDs = verification.ReferralIDs;
+    }
+    if (verification.VideoLink && !verification.videoLink) {
+      verification.videoLink = verification.VideoLink;
+    }
+    if (verification.VerificationDate && !verification.verificationDate) {
+      verification.verificationDate = verification.VerificationDate;
+    }
+    if (
+      verification.VerificationRequestDate &&
+      !verification.verificationRequestDate
+    ) {
+      verification.verificationRequestDate = verification.VerificationRequestDate;
+    }
+    if (
+      typeof verification.RequestCall !== 'undefined' &&
+      typeof verification.requestCall === 'undefined'
+    ) {
+      verification.requestCall = verification.RequestCall;
+    }
+  }
+
   addProfileStatus(user: any) {
     const plainUser =
       typeof user?.toObject === 'function' ? user.toObject() : user;
 
+    this.normalizeVerificationForResponse(plainUser);
     const profileStatus = this.getProfileStatus(plainUser);
 
     return {
@@ -122,14 +153,14 @@ export class UserService {
     await this.isEmailUnique(user.email);
     await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
     user.referralID = generateUniqueCode();
-    user.verification.verificationID = v4();
+    user.verification.VerificationID = v4();
     user.verification.status = VerificationStatus.UNVERIFIED;
     const password = createUserDto.password;
     await this.mailService.sendEmailVerification(user.email, password);
     const savedUser = await user.save();
     return {
       userId: savedUser._id,
-      verificationId: savedUser.verification.verificationID,
+      verificationId: (savedUser.verification as any).VerificationID,
     };
   }
 
@@ -142,7 +173,7 @@ export class UserService {
       await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
-      user.verification.verificationID = v4();
+      user.verification.VerificationID = v4();
       user.verification.status = VerificationStatus.UNVERIFIED;
       await user.save();
     }
@@ -164,7 +195,7 @@ export class UserService {
       await this.applyReferralAttribution(user as any, (userDto as any).referralCode || (userDto as any).ref);
       user.referralID = generateUniqueCode();
       user.emailVerified = true;
-      user.verification.verificationID = v4();
+      user.verification.VerificationID = v4();
       user.verification.status = VerificationStatus.UNVERIFIED;
       await user.save();
     }
@@ -580,13 +611,13 @@ export class UserService {
   ) {
     const user = await this.userModel.findById(id);
     if (verifyUser.referral1 && verifyUser.referral2) {
-      user.verification.referralIDs = [
+      user.verification.ReferralIDs = [
         verifyUser.referral1,
         verifyUser.referral2,
       ];
     }
     user.verification.status = VerificationStatus.VERIFIED;
-    user.verification.verificationDate = new Date();
+    user.verification.VerificationDate = new Date();
     if (options?.method) {
       user.verification.method = options.method;
     }
@@ -620,7 +651,7 @@ export class UserService {
       method = 'call';
     }
     if (verifyUser.videoUrl) {
-      user.verification.videoLink = verifyUser.videoUrl;
+      user.verification.VideoLink = verifyUser.videoUrl;
       method = method || 'video';
     }
     if (verifyUser.flagshipId) {
@@ -648,7 +679,7 @@ export class UserService {
   async getUserData(user: User): Promise<User> {
     const verifiedByMe = await this.userModel.countDocuments({
       'verification.status': VerificationStatus.VERIFIED,
-      'verification.referralIDs': user.referralID,
+      'verification.ReferralIDs': user.referralID,
     });
 
     const userWithStatus = this.addProfileStatus(user);
@@ -809,7 +840,7 @@ export class UserService {
 
   private async findByVerification(verification: string): Promise<User> {
     const user = await this.userModel.findOne({
-      'verification.verificationID': verification,
+      'verification.VerificationID': verification,
       'verification.status': VerificationStatus.UNVERIFIED,
     });
     if (!user) {
@@ -969,9 +1000,9 @@ export class UserService {
 
     user.verification.status = status;
     if (status === VerificationStatus.VERIFIED) {
-      user.verification.verificationDate = new Date();
+      user.verification.VerificationDate = new Date();
     } else {
-      user.verification.verificationDate = undefined;
+      user.verification.VerificationDate = undefined;
       user.verification.RequestCall = false;
     }
     user.markModified('verification');

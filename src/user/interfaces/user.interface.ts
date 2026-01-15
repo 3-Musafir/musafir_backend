@@ -2,6 +2,16 @@ import { Document, Types } from 'mongoose';
 import { VerificationStatus } from '../../constants/verification-status.enum';
 
 export interface VerificationSubSchema {
+  // Legacy persisted fields (schema casing)
+  VerificationID?: string;
+  EncodedVideo?: string;
+  ReferralIDs?: string[];
+  VideoLink?: string;
+  VerificationDate?: Date;
+  VerificationRequestDate?: Date;
+  RequestCall: boolean;
+
+  // Canonical fields used by clients/services (response aliases)
   verificationID?: string;
   encodedVideo?: string;
   referralIDs?: string[];
@@ -11,8 +21,8 @@ export interface VerificationSubSchema {
   videoLink?: string;
   videoStorageKey?: string;
   verificationDate?: Date;
-  VerificationRequestDate?: Date;
-  RequestCall: boolean;
+  verificationRequestDate?: Date;
+  requestCall?: boolean;
 }
 
 export interface User {
