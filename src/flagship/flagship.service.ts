@@ -608,9 +608,84 @@ export class FlagshipService {
     return updatedRegistration;
   }
 
-  async verifyUser(id: string, comment: string) { }
+  async verifyUser(id: string, comment: string) {
+    const user = await this.userModel.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
-  async rejectVerification(id: string, comment: string) { }
+    user.verification.status = VerificationStatus.VERIFIED;
+    user.verification.VerificationDate = new Date();
+    user.verification.method = user.verification.method || 'admin';
+    user.markModified('verification');
+    const savedUser = await user.save();
+
+    if (user.email) {
+      try {
+        await this.mailService.sendVerificationApprovedEmail(
+          user.email,
+          user.fullName || 'Musafir',
+        );
+      } catch (error) {
+        console.log('Failed to send verification approved email:', error);
+      }
+    }
+
+    try {
+      await this.notificationService.ensureVerificationStatusNotification(
+        user._id.toString(),
+        VerificationStatus.VERIFIED,
+        {
+          comment,
+          metadata: { source: 'admin_override' },
+        },
+      );
+    } catch (error) {
+      console.log('Failed to send verification status notification:', error);
+    }
+
+    return savedUser;
+  }
+
+  async rejectVerification(id: string, comment: string) {
+    const user = await this.userModel.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.verification.status = VerificationStatus.REJECTED;
+    user.verification.VerificationDate = undefined;
+    user.verification.RequestCall = false;
+    user.verification.method = user.verification.method || 'admin';
+    user.markModified('verification');
+    const savedUser = await user.save();
+
+    if (user.email) {
+      try {
+        await this.mailService.sendVerificationRejectedEmail(
+          user.email,
+          user.fullName || 'Musafir',
+        );
+      } catch (error) {
+        console.log('Failed to send verification rejected email:', error);
+      }
+    }
+
+    try {
+      await this.notificationService.ensureVerificationStatusNotification(
+        user._id.toString(),
+        VerificationStatus.REJECTED,
+        {
+          comment,
+          metadata: { source: 'admin_override' },
+        },
+      );
+    } catch (error) {
+      console.log('Failed to send verification status notification:', error);
+    }
+
+    return savedUser;
+  }
 
   async getPastTrips() {
     const currentDate = new Date();

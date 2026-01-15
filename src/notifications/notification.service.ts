@@ -26,6 +26,7 @@ interface ListQuery {
 @Injectable()
 export class NotificationService {
   private readonly profileReminderKind = 'profile_completion';
+  private readonly verificationStatusKind = 'verification_status';
 
   constructor(
     @InjectModel('Notification')
@@ -132,6 +133,78 @@ export class NotificationService {
       title: 'Complete your profile',
       message,
       type: 'general',
+      metadata,
+    });
+    const saved = await created.save();
+    const dto = this.toDto(saved);
+    this.gateway.sendNewNotification(userId, dto);
+    return dto;
+  }
+
+  async ensureVerificationStatusNotification(
+    userId: string,
+    status: string,
+    options?: { comment?: string; link?: string; metadata?: Record<string, any> },
+  ) {
+    if (!userId || !status) return null;
+
+    const normalizedStatus = String(status);
+    const type = 'verification';
+    const link =
+      options?.link ??
+      (normalizedStatus === 'verified' ? '/home' : '/verification');
+
+    let title = 'Verification update';
+    let message = 'Your verification status has been updated.';
+
+    if (normalizedStatus === 'verified') {
+      title = 'Verification approved';
+      message = 'You are now verified. You can proceed to payments and seat confirmation.';
+    } else if (normalizedStatus === 'pending') {
+      title = 'Verification pending';
+      message = 'Your verification request is under review. We’ll notify you once it’s decided.';
+    } else if (normalizedStatus === 'rejected') {
+      title = 'Verification rejected';
+      message =
+        'Your verification was rejected. Please resubmit your verification details to proceed.';
+    } else if (normalizedStatus === 'unverified') {
+      title = 'Verification required';
+      message =
+        'Your account is not verified. Complete verification to proceed to payments.';
+    }
+
+    const metadata = {
+      kind: this.verificationStatusKind,
+      status: normalizedStatus,
+      ...(options?.comment ? { comment: options.comment } : {}),
+      ...(options?.metadata || {}),
+    };
+
+    const existing = await this.notificationModel.findOne({
+      userId,
+      'metadata.kind': this.verificationStatusKind,
+    });
+
+    if (existing) {
+      existing.title = title;
+      existing.message = message;
+      existing.type = type;
+      existing.link = link;
+      (existing as any).metadata = { ...(existing as any).metadata, ...metadata };
+      existing.readAt = null;
+
+      const saved = await existing.save();
+      const dto = this.toDto(saved);
+      this.gateway.sendNewNotification(userId, dto);
+      return dto;
+    }
+
+    const created = new this.notificationModel({
+      userId,
+      title,
+      message,
+      type,
+      link,
       metadata,
     });
     const saved = await created.save();

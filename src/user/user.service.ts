@@ -959,28 +959,7 @@ export class UserService {
   }
 
   async approveUser(userId: string) {
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    
-    // Update verification status
-    await this.userModel.findByIdAndUpdate(userId, {
-      'verification.status': VerificationStatus.VERIFIED,
-    });
-
-    // Send verification approved email if user has an email
-    if (user.email) {
-      try {
-        await this.mailService.sendVerificationApprovedEmail(
-          user.email,
-          user.fullName || 'Musafir'
-        );
-      } catch (error) {
-        console.log('Failed to send verification approved email:', error);
-        // Don't throw error - email failure shouldn't prevent user approval
-      }
-    }
+    return this.updateVerificationStatus(userId, VerificationStatus.VERIFIED);
   }
 
   async updateVerificationStatus(userId: string, status: VerificationStatus) {
@@ -1020,6 +999,18 @@ export class UserService {
       }
     }
 
+    try {
+      await this.notificationService.ensureVerificationStatusNotification(
+        userId,
+        status,
+        {
+          metadata: { source: 'admin_override' },
+        },
+      );
+    } catch (error) {
+      console.log('Failed to send verification status notification:', error);
+    }
+
     return savedUser;
   }
 
@@ -1028,11 +1019,12 @@ export class UserService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    
-    // Update verification status
-    await this.userModel.findByIdAndUpdate(userId, {
-      'verification.status': VerificationStatus.REJECTED,
-    });
+    user.verification.status = VerificationStatus.REJECTED;
+    user.verification.VerificationDate = undefined;
+    user.verification.RequestCall = false;
+    user.verification.method = user.verification.method || 'admin';
+    user.markModified('verification');
+    const savedUser = await user.save();
 
     // Send verification rejected email if user has an email
     if (user.email) {
@@ -1046,6 +1038,20 @@ export class UserService {
         // Don't throw error - email failure shouldn't prevent user rejection
       }
     }
+
+    try {
+      await this.notificationService.ensureVerificationStatusNotification(
+        userId,
+        VerificationStatus.REJECTED,
+        {
+          metadata: { source: 'admin_override' },
+        },
+      );
+    } catch (error) {
+      console.log('Failed to send verification status notification:', error);
+    }
+
+    return savedUser;
   }
 
   private async notifyCommunityLeadsAboutCall(user: User) {
