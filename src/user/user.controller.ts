@@ -236,6 +236,19 @@ export class UserController {
     };
   }
 
+  @Get('verification-status')
+  @UseGuards(JwtAuthGuard)
+  async getUserVerificationStatus(@GetUser() user: User) {
+    return {
+      statusCode: 200,
+      message: 'User verification status fetched successfully',
+      data: {
+        status:
+          (user as any)?.verification?.status || VerificationStatus.UNVERIFIED,
+      },
+    };
+  }
+
   @Patch('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
