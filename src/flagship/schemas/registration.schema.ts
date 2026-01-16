@@ -36,3 +36,5 @@ export const RegistrationSchema = new Schema(
     timestamps: true,
   },
 );
+
+RegistrationSchema.index({ userId: 1, flagship: 1 });

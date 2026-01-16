@@ -66,7 +66,10 @@ export class FlagshipService {
     return await this.flagshipModel.find().exec();
   }
 
-  async getAllFlagships(filterDto: FlagshipFilterDto): Promise<Flagship[]> {
+  async getAllFlagships(
+    filterDto: FlagshipFilterDto,
+    options?: { excludeRegisteredUserId?: string },
+  ): Promise<Flagship[]> {
     const query: any = {};
 
     const buildStringQuery = (value: string) => ({
@@ -106,6 +109,24 @@ export class FlagshipService {
           query[key] = value;
         } else {
           query[key] = value;
+        }
+      }
+    }
+
+    if (options?.excludeRegisteredUserId) {
+      const registeredFlagshipIds = await this.registerationModel.distinct(
+        'flagship',
+        { userId: options.excludeRegisteredUserId },
+      );
+
+      if (Array.isArray(registeredFlagshipIds) && registeredFlagshipIds.length > 0) {
+        if (query._id) {
+          query.$and = Array.isArray(query.$and) ? query.$and : [];
+          query.$and.push({ _id: query._id });
+          delete query._id;
+          query.$and.push({ _id: { $nin: registeredFlagshipIds } });
+        } else {
+          query._id = { $nin: registeredFlagshipIds };
         }
       }
     }
@@ -558,20 +579,25 @@ export class FlagshipService {
   async gePaymentStats(id: string) {}
 
   async approveRegisteration(id: string, comment: string) {
-    const updatedRegistration = await this.registerationModel.findByIdAndUpdate(
-      id,
-      {
-        status: 'accepted',
-        comment: comment,
-      },
-      { new: true },
-    );
-
-    if (!updatedRegistration) {
+    const registration: any = await this.registerationModel.findById(id);
+    if (!registration) {
       throw new NotFoundException(`Registration with ID ${id} not found`);
     }
 
-    return updatedRegistration;
+    const currentStatus = registration.status;
+    const lockedStatuses = new Set([
+      'confirmed',
+      'completed',
+      'refunded',
+      'refundProcessing',
+    ]);
+    if (!lockedStatuses.has(currentStatus)) {
+      registration.status = 'accepted';
+    }
+
+    registration.comment = comment;
+
+    return registration.save();
   }
 
   async rejectRegisteration(id: string, comment: string) {

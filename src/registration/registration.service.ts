@@ -168,6 +168,20 @@ export class RegistrationService {
 
       return await Promise.all(
         upcomingOnly.map(async (registration) => {
+          const price = (registration as any)?.price;
+          const amountDue = (registration as any)?.amountDue;
+          const status = String((registration as any)?.status || '');
+          const hasApprovedPayment =
+            typeof price === 'number' &&
+            typeof amountDue === 'number' &&
+            amountDue < price;
+
+          if (status === 'accepted') {
+            (registration as any).status = hasApprovedPayment ? 'confirmed' : 'pending';
+          } else if (status === 'notReserved' && hasApprovedPayment) {
+            (registration as any).status = 'confirmed';
+          }
+
           if (registration.flagship.images && registration.flagship.images.length > 0) {
             const imageUrls = await Promise.all(
               registration.flagship.images.map(async (imageKey) => {

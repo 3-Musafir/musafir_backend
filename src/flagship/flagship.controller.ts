@@ -97,7 +97,11 @@ export class FlagshipController {
       (filterDto as any).endDate = { $gte: new Date() };
     }
 
-    const flagships = await this.flagshipService.getAllFlagships(filterDto);
+    const excludeRegisteredUserId =
+      !isAdmin && user?._id ? user._id.toString() : undefined;
+    const flagships = await this.flagshipService.getAllFlagships(filterDto, {
+      excludeRegisteredUserId,
+    });
     return successResponse(flagships, 'Flagship Data', HttpStatus.OK);
   }
 
