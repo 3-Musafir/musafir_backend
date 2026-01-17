@@ -22,6 +22,7 @@ export class Registration {
   readonly tripType?: string;
   readonly price: number;
   readonly amountDue: number;
+  readonly discountApplied?: number;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
   ratingId?: string | Rating;

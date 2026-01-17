@@ -162,6 +162,10 @@ export class RegistrationService {
           path: 'flagship',
           match: { endDate: { $gte: now } },
         })
+        .populate({
+          path: 'paymentId',
+          select: 'status amount paymentType discount createdAt',
+        })
         .exec();
 
       const upcomingOnly = registrations.filter((r: any) => r?.flagship);
@@ -212,6 +216,10 @@ export class RegistrationService {
       const registration = await this.registrationModel.findById(registrationId)
         .populate('flagship')
         .populate('user')
+        .populate({
+          path: 'paymentId',
+          select: 'status amount paymentType discount createdAt',
+        })
         .exec();
 
       if (registration.flagship.images.length > 0) {

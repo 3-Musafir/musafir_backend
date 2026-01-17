@@ -6,6 +6,7 @@ export interface Payment extends Document {
   registration: Types.ObjectId;
   paymentType: 'fullPayment' | 'partialPayment';
   amount: number;
+  discount?: number;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   createdAt: Date;

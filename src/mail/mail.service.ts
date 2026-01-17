@@ -231,7 +231,8 @@ export class MailService {
     fullName: string,
     amount: number,
     tripName: string,
-    paymentDate: Date
+    paymentDate: Date,
+    options?: { remainingDue?: number; paymentUrl?: string }
   ) {
     try {
       await this.sendMail(
@@ -247,6 +248,8 @@ export class MailService {
             month: 'long',
             day: 'numeric'
           }),
+          remainingDue: options?.remainingDue,
+          paymentUrl: options?.paymentUrl,
         },
       );
       return true;

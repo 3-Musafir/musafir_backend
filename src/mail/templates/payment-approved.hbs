@@ -9,7 +9,18 @@
   <li><strong>Payment Date:</strong> {{paymentDate}}</li>
 </ul>
 </br>
-<p>Your registration is now confirmed, and you're all set for your adventure! We'll keep you updated with trip details and any important information as the departure date approaches.</p>
+{{#if remainingDue}}
+  <p>Your payment has been approved. <strong>Remaining due:</strong> PKR {{remainingDue}}.</p>
+  {{#if paymentUrl}}
+    </br>
+    <p>You can complete the remaining payment here:</p>
+    <p><a href="{{paymentUrl}}">{{paymentUrl}}</a></p>
+  {{/if}}
+  </br>
+  <p>Once the remaining amount is received and approved, you’ll be fully paid for this trip.</p>
+{{else}}
+  <p>Your registration is now confirmed, and you're all set for your adventure! We'll keep you updated with trip details and any important information as the departure date approaches.</p>
+{{/if}}
 </br>
 <p>If you have any questions about your trip or need assistance, please don't hesitate to reach out to our support team.</p>
 </br>

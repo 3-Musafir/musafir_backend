@@ -407,19 +407,36 @@ export class FlagshipService {
     const registrations = await this.registerationModel
       .find({ flagship: id })
       .populate({ path: 'user', model: 'User' })
-      .populate({
-        path: 'paymentId',
-        model: 'Payment',
-        match: { status: 'approved' },
-      })
+      .lean()
       .exec();
 
-    // JS-level filtering
-    const filtered = registrations.filter(
-      (r) => r.payment && r.payment.paymentType === paymentType,
-    );
+    if (!registrations || registrations.length === 0) return [];
 
-    return filtered;
+    const registrationIds = registrations.map((r: any) => r._id);
+    const approvedPayments = await this.paymentModel
+      .find({
+        registration: { $in: registrationIds },
+        status: 'approved',
+        paymentType,
+      })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const latestByRegistration = new Map<string, any>();
+    for (const payment of approvedPayments) {
+      const regId = String((payment as any).registration);
+      if (!latestByRegistration.has(regId)) {
+        latestByRegistration.set(regId, payment);
+      }
+    }
+
+    return registrations
+      .map((r: any) => ({
+        ...r,
+        payment: latestByRegistration.get(String(r._id)) || null,
+      }))
+      .filter((r: any) => r.payment);
   }
 
   async getRegistrationByID(id: string) {

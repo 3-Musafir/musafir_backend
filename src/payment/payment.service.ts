@@ -183,6 +183,30 @@ export class PaymentService {
       throw new Error('Registration not found');
     }
 
+    const amountDue =
+      typeof (registration as any)?.amountDue === 'number'
+        ? (registration as any).amountDue
+        : typeof (registration as any)?.price === 'number'
+          ? (registration as any).price
+          : undefined;
+    if (typeof amountDue === 'number' && amountDue <= 0) {
+      throw new BadRequestException({
+        message: 'No payment is due for this registration.',
+        code: 'no_payment_due',
+      });
+    }
+
+    const existingPending = await this.paymentModel.exists({
+      registration: createPaymentDto.registration,
+      status: 'pendingApproval',
+    });
+    if (existingPending) {
+      throw new BadRequestException({
+        message: 'A payment for this registration is already pending approval.',
+        code: 'payment_pending_approval',
+      });
+    }
+
     const registrationUserId = (registration as any).userId || (registration as any).user;
 
     if (requester && registrationUserId && registrationUserId.toString() !== requester._id?.toString()) {
@@ -245,6 +269,7 @@ export class PaymentService {
     }
 
     let registration: any = null;
+    let remainingDue: number | null = null;
     if (payment.registration) {
       registration = await this.registrationModel.findById(payment.registration);
       const registrationUserId = registration?.userId || registration?.user;
@@ -260,10 +285,37 @@ export class PaymentService {
     await payment.save();
 
     if (registration) {
+      const currentAmountDue =
+        typeof registration.amountDue === 'number'
+          ? registration.amountDue
+          : typeof registration.price === 'number'
+            ? registration.price
+            : 0;
+      const currentDiscountApplied =
+        typeof registration.discountApplied === 'number'
+          ? registration.discountApplied
+          : 0;
+      const paymentDiscount =
+        typeof (payment as any)?.discount === 'number'
+          ? (payment as any).discount
+          : 0;
+      const targetDiscount = Math.max(0, paymentDiscount);
+      const discountDelta = Math.max(0, targetDiscount - currentDiscountApplied);
+
+      const updatedDiscountApplied = currentDiscountApplied + discountDelta;
+      const newAmountDue = Math.max(
+        0,
+        currentAmountDue - payment.amount - discountDelta,
+      );
+      remainingDue = newAmountDue;
+
       await this.registrationModel.findByIdAndUpdate(payment.registration, {
         isPaid: true,
-        amountDue: registration.amountDue - payment.amount,
+        amountDue: newAmountDue,
+        discountApplied: updatedDiscountApplied,
         status: 'confirmed',
+        payment: payment._id,
+        paymentId: payment._id,
       });
     }
 
@@ -282,6 +334,11 @@ export class PaymentService {
         const reg = populatedPayment.registration as any;
         const user = reg.user;
         const flagship = reg.flagship;
+        const registrationId = reg?._id?.toString();
+        const paymentUrl =
+          process.env.FRONTEND_URL && registrationId
+            ? `${process.env.FRONTEND_URL}/musafir/payment/${registrationId}`
+            : undefined;
 
         if (user && user.email && flagship) {
           await this.mailService.sendPaymentApprovedEmail(
@@ -289,18 +346,30 @@ export class PaymentService {
             user.fullName || 'Musafir',
             payment.amount,
             flagship.tripName,
-            payment.createdAt
+            payment.createdAt,
+            {
+              remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
+              paymentUrl,
+            },
           );
           // Also send an in-app notification
           await this.notificationService.createForUser(String(user._id), {
             title: 'Payment approved',
-            message: `Your payment for ${flagship.tripName} was approved. Your seat is confirmed.`,
+            message:
+              typeof remainingDue === 'number' && remainingDue > 0
+                ? `Your payment for ${flagship.tripName} was approved. Remaining due: Rs.${remainingDue.toLocaleString()}.`
+                : `Your payment for ${flagship.tripName} was approved. Your seat is confirmed.`,
             type: 'payment',
+            link:
+              typeof remainingDue === 'number' && remainingDue > 0 && registrationId
+                ? `/musafir/payment/${registrationId}`
+                : '/passport',
             metadata: {
               paymentId: payment._id?.toString(),
               registrationId: reg._id?.toString(),
               flagshipId: flagship._id?.toString(),
               amount: payment.amount,
+              remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
             },
           });
         }
