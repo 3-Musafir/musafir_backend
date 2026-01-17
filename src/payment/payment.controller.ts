@@ -92,8 +92,9 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request Refund' })
   @ApiOkResponse({})
-  requestRefund(@Body() requestRefundDto: RequestRefundDto) {
-    return this.paymentService.requestRefund(requestRefundDto);
+  @UseGuards(JwtAuthGuard)
+  requestRefund(@GetUser() user: User, @Body() requestRefundDto: RequestRefundDto) {
+    return this.paymentService.requestRefund(requestRefundDto, user);
   }
 
   @Get('get-refunds')

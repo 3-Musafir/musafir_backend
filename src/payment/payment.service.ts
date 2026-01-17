@@ -114,16 +114,89 @@ export class PaymentService {
     return bankAccount.save();
   }
 
-  async requestRefund(requestRefundDto: RequestRefundDto): Promise<Refund> {
-    const refund = new this.refundModel(requestRefundDto);
-
-    const registration = await this.registrationModel.findById(
-      requestRefundDto.registration,
-    );
-    if (registration) {
-      registration.status = 'refundProcessing';
-      await registration.save();
+  async requestRefund(requestRefundDto: RequestRefundDto, requester: User): Promise<Refund> {
+    if (!requester?._id) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'refund_auth_required',
+      });
     }
+
+    const registration = await this.registrationModel
+      .findById(requestRefundDto.registration)
+      .lean()
+      .exec();
+    if (!registration) {
+      throw new BadRequestException({
+        message: 'Registration not found.',
+        code: 'refund_registration_not_found',
+      });
+    }
+
+    const registrationUserId = (registration as any).userId || (registration as any).user;
+    if (!registrationUserId || String(registrationUserId) !== String(requester._id)) {
+      throw new ForbiddenException('You can only request a refund for your own registration.');
+    }
+
+    const status = String((registration as any)?.status || '');
+    const amountDue =
+      typeof (registration as any)?.amountDue === 'number'
+        ? (registration as any).amountDue
+        : typeof (registration as any)?.price === 'number'
+          ? (registration as any).price
+          : undefined;
+
+    const eligibleStatus = status === 'confirmed' || status === 'accepted';
+    if (!eligibleStatus || typeof amountDue !== 'number' || amountDue > 0) {
+      throw new BadRequestException({
+        message: 'Refunds can only be requested after your payment is approved and your seat is confirmed.',
+        code: 'refund_not_eligible',
+      });
+    }
+
+    const approvedPayment = await this.paymentModel
+      .findOne({
+        registration: (registration as any)._id,
+        status: 'approved',
+      })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    if (!approvedPayment) {
+      throw new BadRequestException({
+        message: 'Refunds can only be requested after your payment is approved.',
+        code: 'refund_payment_not_approved',
+      });
+    }
+
+    const existing = await this.refundModel.exists({
+      registration: (registration as any)._id,
+      status: { $in: ['pending', 'cleared'] },
+    });
+    if (existing) {
+      throw new BadRequestException({
+        message: 'A refund request already exists for this registration.',
+        code: 'refund_already_requested',
+      });
+    }
+
+    const updatedRegistration = await this.registrationModel.findOneAndUpdate(
+      {
+        _id: (registration as any)._id,
+        userId: registrationUserId,
+        status: (registration as any).status,
+      },
+      { $set: { status: 'refundProcessing' } },
+      { new: true },
+    );
+    if (!updatedRegistration) {
+      throw new BadRequestException({
+        message: 'Refund could not be requested. Please retry.',
+        code: 'refund_state_changed',
+      });
+    }
+
+    const refund = new this.refundModel(requestRefundDto);
     return refund.save();
   }
 
