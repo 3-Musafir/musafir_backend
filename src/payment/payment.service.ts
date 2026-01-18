@@ -180,6 +180,27 @@ export class PaymentService {
       });
     }
 
+    const lastRejected: any = await this.refundModel
+      .findOne({
+        registration: (registration as any)._id,
+        status: 'rejected',
+      })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean()
+      .exec();
+
+    if (lastRejected?.updatedAt) {
+      const lastRejectedAt = new Date(lastRejected.updatedAt);
+      const retryAt = new Date(lastRejectedAt.getTime() + 24 * 60 * 60 * 1000);
+      if (Date.now() < retryAt.getTime()) {
+        throw new BadRequestException({
+          message: 'Refund request was recently rejected. Please wait 24 hours before reapplying.',
+          code: 'refund_cooldown',
+          retryAt: retryAt.toISOString(),
+        });
+      }
+    }
+
     const updatedRegistration = await this.registrationModel.findOneAndUpdate(
       {
         _id: (registration as any)._id,
@@ -543,6 +564,22 @@ export class PaymentService {
         });
 
         await this.updateUserTripStats(String(registration.userId));
+
+        try {
+          await this.notificationService.createForUser(String(registration.userId), {
+            title: 'Refund approved',
+            message:
+              'Your refund request has been approved. Our team will process it and update you once it’s completed.',
+            type: 'refund',
+            link: '/passport',
+            metadata: {
+              refundId: refund._id?.toString(),
+              registrationId: registration._id?.toString(),
+            },
+          });
+        } catch (error) {
+          console.log('Failed to send refund approved notification:', error);
+        }
       }
     }
 
@@ -570,6 +607,24 @@ export class PaymentService {
 
       if (registration?.userId) {
         await this.updateUserTripStats(String(registration.userId));
+
+        const retryAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        try {
+          await this.notificationService.createForUser(String(registration.userId), {
+            title: 'Refund rejected',
+            message:
+              'Your refund request was rejected. You can reapply after 24 hours.',
+            type: 'refund',
+            link: '/passport',
+            metadata: {
+              refundId: refund._id?.toString(),
+              registrationId: registration._id?.toString(),
+              retryAt,
+            },
+          });
+        } catch (error) {
+          console.log('Failed to send refund rejected notification:', error);
+        }
       }
     }
 
