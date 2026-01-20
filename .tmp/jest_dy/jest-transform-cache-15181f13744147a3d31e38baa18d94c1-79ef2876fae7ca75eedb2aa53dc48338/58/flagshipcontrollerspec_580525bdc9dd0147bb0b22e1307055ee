@@ -1,0 +1,29 @@
+5debc7a4bbaa6749f55913a27fa6b645
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const testing_1 = require("@nestjs/testing");
+const flagship_controller_1 = require("./flagship.controller");
+const flagship_service_1 = require("./flagship.service");
+describe('FlagshipController', () => {
+    let controller;
+    beforeEach(() => __awaiter(void 0, void 0, void 0, function* () {
+        const module = yield testing_1.Test.createTestingModule({
+            controllers: [flagship_controller_1.FlagshipController],
+            providers: [{ provide: flagship_service_1.FlagshipService, useValue: {} }],
+        }).compile();
+        controller = module.get(flagship_controller_1.FlagshipController);
+    }));
+    it('should be defined', () => {
+        expect(controller).toBeDefined();
+    });
+});
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL2ZsYWdzaGlwL2ZsYWdzaGlwLmNvbnRyb2xsZXIuc3BlYy50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7OztBQUFBLDZDQUFzRDtBQUN0RCwrREFBMkQ7QUFDM0QseURBQXFEO0FBRXJELFFBQVEsQ0FBQyxvQkFBb0IsRUFBRSxHQUFHLEVBQUU7SUFDbEMsSUFBSSxVQUE4QixDQUFDO0lBRW5DLFVBQVUsQ0FBQyxHQUFTLEVBQUU7UUFDcEIsTUFBTSxNQUFNLEdBQWtCLE1BQU0sY0FBSSxDQUFDLG1CQUFtQixDQUFDO1lBQzNELFdBQVcsRUFBRSxDQUFDLHdDQUFrQixDQUFDO1lBQ2pDLFNBQVMsRUFBRSxDQUFDLEVBQUUsT0FBTyxFQUFFLGtDQUFlLEVBQUUsUUFBUSxFQUFFLEVBQUUsRUFBRSxDQUFDO1NBQ3hELENBQUMsQ0FBQyxPQUFPLEVBQUUsQ0FBQztRQUViLFVBQVUsR0FBRyxNQUFNLENBQUMsR0FBRyxDQUFxQix3Q0FBa0IsQ0FBQyxDQUFDO0lBQ2xFLENBQUMsQ0FBQSxDQUFDLENBQUM7SUFFSCxFQUFFLENBQUMsbUJBQW1CLEVBQUUsR0FBRyxFQUFFO1FBQzNCLE1BQU0sQ0FBQyxVQUFVLENBQUMsQ0FBQyxXQUFXLEVBQUUsQ0FBQztJQUNuQyxDQUFDLENBQUMsQ0FBQztBQUNMLENBQUMsQ0FBQyxDQUFDIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9kZXZwcm9maWxlL0RvY3VtZW50cy9HaXRIdWIvbXVzYWZpcl9iYWNrZW5kL3NyYy9mbGFnc2hpcC9mbGFnc2hpcC5jb250cm9sbGVyLnNwZWMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgVGVzdCwgVGVzdGluZ01vZHVsZSB9IGZyb20gJ0BuZXN0anMvdGVzdGluZyc7XG5pbXBvcnQgeyBGbGFnc2hpcENvbnRyb2xsZXIgfSBmcm9tICcuL2ZsYWdzaGlwLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgRmxhZ3NoaXBTZXJ2aWNlIH0gZnJvbSAnLi9mbGFnc2hpcC5zZXJ2aWNlJztcblxuZGVzY3JpYmUoJ0ZsYWdzaGlwQ29udHJvbGxlcicsICgpID0+IHtcbiAgbGV0IGNvbnRyb2xsZXI6IEZsYWdzaGlwQ29udHJvbGxlcjtcblxuICBiZWZvcmVFYWNoKGFzeW5jICgpID0+IHtcbiAgICBjb25zdCBtb2R1bGU6IFRlc3RpbmdNb2R1bGUgPSBhd2FpdCBUZXN0LmNyZWF0ZVRlc3RpbmdNb2R1bGUoe1xuICAgICAgY29udHJvbGxlcnM6IFtGbGFnc2hpcENvbnRyb2xsZXJdLFxuICAgICAgcHJvdmlkZXJzOiBbeyBwcm92aWRlOiBGbGFnc2hpcFNlcnZpY2UsIHVzZVZhbHVlOiB7fSB9XSxcbiAgICB9KS5jb21waWxlKCk7XG5cbiAgICBjb250cm9sbGVyID0gbW9kdWxlLmdldDxGbGFnc2hpcENvbnRyb2xsZXI+KEZsYWdzaGlwQ29udHJvbGxlcik7XG4gIH0pO1xuXG4gIGl0KCdzaG91bGQgYmUgZGVmaW5lZCcsICgpID0+IHtcbiAgICBleHBlY3QoY29udHJvbGxlcikudG9CZURlZmluZWQoKTtcbiAgfSk7XG59KTtcbiJdLCJ2ZXJzaW9uIjozfQ==

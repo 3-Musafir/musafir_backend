@@ -1,0 +1,120 @@
+ed27ad6d4fcf951036ee21960a837728
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __asyncValues = (this && this.__asyncValues) || function (o) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var m = o[Symbol.asyncIterator], i;
+    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StorageService = void 0;
+const client_s3_1 = require("@aws-sdk/client-s3");
+const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
+const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
+let StorageService = class StorageService {
+    constructor(configService) {
+        this.configService = configService;
+        const region = this.configService.get('AWS_REGION');
+        const accessKeyId = this.configService.get('AWS_ACCESS_KEY_ID');
+        const bucketName = this.configService.get('AWS_BUCKET_NAME');
+        this.s3 = new client_s3_1.S3Client({
+            region: region,
+            credentials: {
+                accessKeyId: accessKeyId,
+                secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY'),
+            },
+        });
+        this.bucket = bucketName;
+    }
+    uploadFile(key, buffer, mimetype) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const command = new client_s3_1.PutObjectCommand({
+                    Bucket: this.bucket,
+                    Key: key,
+                    Body: buffer,
+                    ContentType: mimetype,
+                });
+                const response = yield this.s3.send(command);
+                return key;
+            }
+            catch (error) {
+                throw new Error(`S3 Upload failed for ${key}: ${error.message}`);
+            }
+        });
+    }
+    deleteFile(key) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.s3.send(new client_s3_1.DeleteObjectCommand({
+                Bucket: this.bucket,
+                Key: key,
+            }));
+        });
+    }
+    getSignedUrl(key_1) {
+        return __awaiter(this, arguments, void 0, function* (key, expiresIn = 3600) {
+            const command = new client_s3_1.GetObjectCommand({
+                Bucket: this.bucket,
+                Key: key,
+            });
+            return (0, s3_request_presigner_1.getSignedUrl)(this.s3, command, { expiresIn });
+        });
+    }
+    getImageData(key) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, e_1, _b, _c;
+            const command = new client_s3_1.GetObjectCommand({
+                Bucket: this.bucket,
+                Key: key,
+            });
+            const response = yield this.s3.send(command);
+            const stream = response.Body;
+            const chunks = [];
+            try {
+                for (var _d = true, stream_1 = __asyncValues(stream), stream_1_1; stream_1_1 = yield stream_1.next(), _a = stream_1_1.done, !_a; _d = true) {
+                    _c = stream_1_1.value;
+                    _d = false;
+                    const chunk = _c;
+                    chunks.push(Buffer.from(chunk));
+                }
+            }
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (!_d && !_a && (_b = stream_1.return)) yield _b.call(stream_1);
+                }
+                finally { if (e_1) throw e_1.error; }
+            }
+            const buffer = Buffer.concat(chunks);
+            const base64 = buffer.toString('base64');
+            const contentType = response.ContentType || 'image/jpeg';
+            return `data:${contentType};base64,${base64}`;
+        });
+    }
+};
+exports.StorageService = StorageService;
+exports.StorageService = StorageService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [config_1.ConfigService])
+], StorageService);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3N0b3JhZ2Uvc3RvcmFnZVNlcnZpY2UudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7OztBQUFBLGtEQUs0QjtBQUM1Qix3RUFBNkQ7QUFDN0QsMkNBQTRDO0FBQzVDLDJDQUErQztBQUl4QyxJQUFNLGNBQWMsR0FBcEIsTUFBTSxjQUFjO0lBSXpCLFlBQW9CLGFBQTRCO1FBQTVCLGtCQUFhLEdBQWIsYUFBYSxDQUFlO1FBQzlDLE1BQU0sTUFBTSxHQUFHLElBQUksQ0FBQyxhQUFhLENBQUMsR0FBRyxDQUFTLFlBQVksQ0FBQyxDQUFDO1FBQzVELE1BQU0sV0FBVyxHQUFHLElBQUksQ0FBQyxhQUFhLENBQUMsR0FBRyxDQUFTLG1CQUFtQixDQUFDLENBQUM7UUFDeEUsTUFBTSxVQUFVLEdBQUcsSUFBSSxDQUFDLGFBQWEsQ0FBQyxHQUFHLENBQVMsaUJBQWlCLENBQUMsQ0FBQztRQUdyRSxJQUFJLENBQUMsRUFBRSxHQUFHLElBQUksb0JBQVEsQ0FBQztZQUNyQixNQUFNLEVBQUUsTUFBTTtZQUNkLFdBQVcsRUFBRTtnQkFDWCxXQUFXLEVBQUUsV0FBVztnQkFDeEIsZUFBZSxFQUFFLElBQUksQ0FBQyxhQUFhLENBQUMsR0FBRyxDQUNyQyx1QkFBdUIsQ0FDeEI7YUFDRjtTQUNGLENBQUMsQ0FBQztRQUVILElBQUksQ0FBQyxNQUFNLEdBQUcsVUFBVSxDQUFDO0lBQzNCLENBQUM7SUFFSyxVQUFVLENBQ2QsR0FBVyxFQUNYLE1BQWMsRUFDZCxRQUFnQjs7WUFHaEIsSUFBSSxDQUFDO2dCQUNILE1BQU0sT0FBTyxHQUFHLElBQUksNEJBQWdCLENBQUM7b0JBQ25DLE1BQU0sRUFBRSxJQUFJLENBQUMsTUFBTTtvQkFDbkIsR0FBRyxFQUFFLEdBQUc7b0JBQ1IsSUFBSSxFQUFFLE1BQU07b0JBQ1osV0FBVyxFQUFFLFFBQVE7aUJBQ3RCLENBQUMsQ0FBQztnQkFFSCxNQUFNLFFBQVEsR0FBRyxNQUFNLElBQUksQ0FBQyxFQUFFLENBQUMsSUFBSSxDQUFDLE9BQU8sQ0FBQyxDQUFDO2dCQUU3QyxPQUFPLEdBQUcsQ0FBQztZQUNiLENBQUM7WUFBQyxPQUFPLEtBQVUsRUFBRSxDQUFDO2dCQUNwQixNQUFNLElBQUksS0FBSyxDQUFDLHdCQUF3QixHQUFHLEtBQUssS0FBSyxDQUFDLE9BQU8sRUFBRSxDQUFDLENBQUM7WUFDbkUsQ0FBQztRQUNILENBQUM7S0FBQTtJQUVLLFVBQVUsQ0FBQyxHQUFXOztZQUMxQixNQUFNLElBQUksQ0FBQyxFQUFFLENBQUMsSUFBSSxDQUNoQixJQUFJLCtCQUFtQixDQUFDO2dCQUN0QixNQUFNLEVBQUUsSUFBSSxDQUFDLE1BQU07Z0JBQ25CLEdBQUcsRUFBRSxHQUFHO2FBQ1QsQ0FBQyxDQUNILENBQUM7UUFDSixDQUFDO0tBQUE7SUFFSyxZQUFZOzZEQUFDLEdBQVcsRUFBRSxTQUFTLEdBQUcsSUFBSTtZQUM5QyxNQUFNLE9BQU8sR0FBRyxJQUFJLDRCQUFnQixDQUFDO2dCQUNuQyxNQUFNLEVBQUUsSUFBSSxDQUFDLE1BQU07Z0JBQ25CLEdBQUcsRUFBRSxHQUFHO2FBQ1QsQ0FBQyxDQUFDO1lBRUgsT0FBTyxJQUFBLG1DQUFZLEVBQUMsSUFBSSxDQUFDLEVBQUUsRUFBRSxPQUFPLEVBQUUsRUFBRSxTQUFTLEVBQUUsQ0FBQyxDQUFDO1FBQ3ZELENBQUM7S0FBQTtJQUVLLFlBQVksQ0FBQyxHQUFXOzs7WUFDNUIsTUFBTSxPQUFPLEdBQUcsSUFBSSw0QkFBZ0IsQ0FBQztnQkFDbkMsTUFBTSxFQUFFLElBQUksQ0FBQyxNQUFNO2dCQUNuQixHQUFHLEVBQUUsR0FBRzthQUNULENBQUMsQ0FBQztZQUVILE1BQU0sUUFBUSxHQUFHLE1BQU0sSUFBSSxDQUFDLEVBQUUsQ0FBQyxJQUFJLENBQUMsT0FBTyxDQUFDLENBQUM7WUFDN0MsTUFBTSxNQUFNLEdBQUcsUUFBUSxDQUFDLElBQWdCLENBQUM7WUFFekMsTUFBTSxNQUFNLEdBQWEsRUFBRSxDQUFDOztnQkFDNUIsS0FBMEIsZUFBQSxXQUFBLGNBQUEsTUFBTSxDQUFBLFlBQUEsNEVBQUUsQ0FBQztvQkFBVCxzQkFBTTtvQkFBTixXQUFNO29CQUFyQixNQUFNLEtBQUssS0FBQSxDQUFBO29CQUNwQixNQUFNLENBQUMsSUFBSSxDQUFDLE1BQU0sQ0FBQyxJQUFJLENBQUMsS0FBSyxDQUFDLENBQUMsQ0FBQztnQkFDbEMsQ0FBQzs7Ozs7Ozs7O1lBQ0QsTUFBTSxNQUFNLEdBQUcsTUFBTSxDQUFDLE1BQU0sQ0FBQyxNQUFNLENBQUMsQ0FBQztZQUVyQyxNQUFNLE1BQU0sR0FBRyxNQUFNLENBQUMsUUFBUSxDQUFDLFFBQVEsQ0FBQyxDQUFDO1lBQ3pDLE1BQU0sV0FBVyxHQUFHLFFBQVEsQ0FBQyxXQUFXLElBQUksWUFBWSxDQUFDO1lBRXpELE9BQU8sUUFBUSxXQUFXLFdBQVcsTUFBTSxFQUFFLENBQUM7UUFDaEQsQ0FBQztLQUFBO0NBQ0YsQ0FBQTtBQW5GWSx3Q0FBYzt5QkFBZCxjQUFjO0lBRDFCLElBQUEsbUJBQVUsR0FBRTtxQ0FLd0Isc0JBQWE7R0FKckMsY0FBYyxDQW1GMUIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3N0b3JhZ2Uvc3RvcmFnZVNlcnZpY2UudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHtcbiAgUzNDbGllbnQsXG4gIFB1dE9iamVjdENvbW1hbmQsXG4gIERlbGV0ZU9iamVjdENvbW1hbmQsXG4gIEdldE9iamVjdENvbW1hbmQsXG59IGZyb20gJ0Bhd3Mtc2RrL2NsaWVudC1zMyc7XG5pbXBvcnQgeyBnZXRTaWduZWRVcmwgfSBmcm9tICdAYXdzLXNkay9zMy1yZXF1ZXN0LXByZXNpZ25lcic7XG5pbXBvcnQgeyBJbmplY3RhYmxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgQ29uZmlnU2VydmljZSB9IGZyb20gJ0BuZXN0anMvY29uZmlnJztcbmltcG9ydCB7IFJlYWRhYmxlIH0gZnJvbSAnc3RyZWFtJztcblxuQEluamVjdGFibGUoKVxuZXhwb3J0IGNsYXNzIFN0b3JhZ2VTZXJ2aWNlIHtcbiAgcHJpdmF0ZSBzMzogUzNDbGllbnQ7XG4gIHByaXZhdGUgYnVja2V0OiBzdHJpbmc7XG5cbiAgY29uc3RydWN0b3IocHJpdmF0ZSBjb25maWdTZXJ2aWNlOiBDb25maWdTZXJ2aWNlKSB7XG4gICAgY29uc3QgcmVnaW9uID0gdGhpcy5jb25maWdTZXJ2aWNlLmdldDxzdHJpbmc+KCdBV1NfUkVHSU9OJyk7XG4gICAgY29uc3QgYWNjZXNzS2V5SWQgPSB0aGlzLmNvbmZpZ1NlcnZpY2UuZ2V0PHN0cmluZz4oJ0FXU19BQ0NFU1NfS0VZX0lEJyk7XG4gICAgY29uc3QgYnVja2V0TmFtZSA9IHRoaXMuY29uZmlnU2VydmljZS5nZXQ8c3RyaW5nPignQVdTX0JVQ0tFVF9OQU1FJyk7XG4gICAgXG5cbiAgICB0aGlzLnMzID0gbmV3IFMzQ2xpZW50KHtcbiAgICAgIHJlZ2lvbjogcmVnaW9uLFxuICAgICAgY3JlZGVudGlhbHM6IHtcbiAgICAgICAgYWNjZXNzS2V5SWQ6IGFjY2Vzc0tleUlkLFxuICAgICAgICBzZWNyZXRBY2Nlc3NLZXk6IHRoaXMuY29uZmlnU2VydmljZS5nZXQ8c3RyaW5nPihcbiAgICAgICAgICAnQVdTX1NFQ1JFVF9BQ0NFU1NfS0VZJyxcbiAgICAgICAgKSxcbiAgICAgIH0sXG4gICAgfSk7XG5cbiAgICB0aGlzLmJ1Y2tldCA9IGJ1Y2tldE5hbWU7XG4gIH1cblxuICBhc3luYyB1cGxvYWRGaWxlKFxuICAgIGtleTogc3RyaW5nLFxuICAgIGJ1ZmZlcjogQnVmZmVyLFxuICAgIG1pbWV0eXBlOiBzdHJpbmcsXG4gICk6IFByb21pc2U8c3RyaW5nPiB7XG5cbiAgICB0cnkge1xuICAgICAgY29uc3QgY29tbWFuZCA9IG5ldyBQdXRPYmplY3RDb21tYW5kKHtcbiAgICAgICAgQnVja2V0OiB0aGlzLmJ1Y2tldCxcbiAgICAgICAgS2V5OiBrZXksXG4gICAgICAgIEJvZHk6IGJ1ZmZlcixcbiAgICAgICAgQ29udGVudFR5cGU6IG1pbWV0eXBlLFxuICAgICAgfSk7XG5cbiAgICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgdGhpcy5zMy5zZW5kKGNvbW1hbmQpO1xuXG4gICAgICByZXR1cm4ga2V5O1xuICAgIH0gY2F0Y2ggKGVycm9yOiBhbnkpIHtcbiAgICAgIHRocm93IG5ldyBFcnJvcihgUzMgVXBsb2FkIGZhaWxlZCBmb3IgJHtrZXl9OiAke2Vycm9yLm1lc3NhZ2V9YCk7XG4gICAgfVxuICB9XG5cbiAgYXN5bmMgZGVsZXRlRmlsZShrZXk6IHN0cmluZyk6IFByb21pc2U8dm9pZD4ge1xuICAgIGF3YWl0IHRoaXMuczMuc2VuZChcbiAgICAgIG5ldyBEZWxldGVPYmplY3RDb21tYW5kKHtcbiAgICAgICAgQnVja2V0OiB0aGlzLmJ1Y2tldCxcbiAgICAgICAgS2V5OiBrZXksXG4gICAgICB9KSxcbiAgICApO1xuICB9XG5cbiAgYXN5bmMgZ2V0U2lnbmVkVXJsKGtleTogc3RyaW5nLCBleHBpcmVzSW4gPSAzNjAwKTogUHJvbWlzZTxzdHJpbmc+IHtcbiAgICBjb25zdCBjb21tYW5kID0gbmV3IEdldE9iamVjdENvbW1hbmQoe1xuICAgICAgQnVja2V0OiB0aGlzLmJ1Y2tldCxcbiAgICAgIEtleToga2V5LFxuICAgIH0pO1xuXG4gICAgcmV0dXJuIGdldFNpZ25lZFVybCh0aGlzLnMzLCBjb21tYW5kLCB7IGV4cGlyZXNJbiB9KTtcbiAgfVxuXG4gIGFzeW5jIGdldEltYWdlRGF0YShrZXk6IHN0cmluZyk6IFByb21pc2U8c3RyaW5nPiB7XG4gICAgY29uc3QgY29tbWFuZCA9IG5ldyBHZXRPYmplY3RDb21tYW5kKHtcbiAgICAgIEJ1Y2tldDogdGhpcy5idWNrZXQsXG4gICAgICBLZXk6IGtleSxcbiAgICB9KTtcblxuICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgdGhpcy5zMy5zZW5kKGNvbW1hbmQpO1xuICAgIGNvbnN0IHN0cmVhbSA9IHJlc3BvbnNlLkJvZHkgYXMgUmVhZGFibGU7XG5cbiAgICBjb25zdCBjaHVua3M6IEJ1ZmZlcltdID0gW107XG4gICAgZm9yIGF3YWl0IChjb25zdCBjaHVuayBvZiBzdHJlYW0pIHtcbiAgICAgIGNodW5rcy5wdXNoKEJ1ZmZlci5mcm9tKGNodW5rKSk7XG4gICAgfVxuICAgIGNvbnN0IGJ1ZmZlciA9IEJ1ZmZlci5jb25jYXQoY2h1bmtzKTtcblxuICAgIGNvbnN0IGJhc2U2NCA9IGJ1ZmZlci50b1N0cmluZygnYmFzZTY0Jyk7XG4gICAgY29uc3QgY29udGVudFR5cGUgPSByZXNwb25zZS5Db250ZW50VHlwZSB8fCAnaW1hZ2UvanBlZyc7XG5cbiAgICByZXR1cm4gYGRhdGE6JHtjb250ZW50VHlwZX07YmFzZTY0LCR7YmFzZTY0fWA7XG4gIH1cbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

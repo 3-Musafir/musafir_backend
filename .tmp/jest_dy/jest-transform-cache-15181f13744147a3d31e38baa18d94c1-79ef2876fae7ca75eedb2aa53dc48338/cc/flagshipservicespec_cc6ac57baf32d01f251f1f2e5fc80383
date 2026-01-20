@@ -1,0 +1,44 @@
+8ba851a60f61852d77716dbe15c576c4
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const testing_1 = require("@nestjs/testing");
+const mongoose_1 = require("@nestjs/mongoose");
+const flagship_service_1 = require("./flagship.service");
+const registration_service_1 = require("src/registration/registration.service");
+const mail_service_1 = require("src/mail/mail.service");
+const storageService_1 = require("src/storage/storageService");
+const notification_service_1 = require("src/notifications/notification.service");
+const user_service_1 = require("src/user/user.service");
+describe('FlagshipService', () => {
+    let service;
+    beforeEach(() => __awaiter(void 0, void 0, void 0, function* () {
+        const module = yield testing_1.Test.createTestingModule({
+            providers: [
+                flagship_service_1.FlagshipService,
+                { provide: (0, mongoose_1.getModelToken)('Flagship'), useValue: {} },
+                { provide: registration_service_1.RegistrationService, useValue: {} },
+                { provide: mail_service_1.MailService, useValue: {} },
+                { provide: storageService_1.StorageService, useValue: {} },
+                { provide: (0, mongoose_1.getModelToken)('User'), useValue: {} },
+                { provide: (0, mongoose_1.getModelToken)('Registration'), useValue: {} },
+                { provide: (0, mongoose_1.getModelToken)('Payment'), useValue: {} },
+                { provide: notification_service_1.NotificationService, useValue: {} },
+                { provide: user_service_1.UserService, useValue: {} },
+            ],
+        }).compile();
+        service = module.get(flagship_service_1.FlagshipService);
+    }));
+    it('should be defined', () => {
+        expect(service).toBeDefined();
+    });
+});
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL2ZsYWdzaGlwL2ZsYWdzaGlwLnNlcnZpY2Uuc3BlYy50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7OztBQUFBLDZDQUFzRDtBQUN0RCwrQ0FBaUQ7QUFDakQseURBQXFEO0FBQ3JELGdGQUE0RTtBQUM1RSx3REFBb0Q7QUFDcEQsK0RBQTREO0FBQzVELGlGQUE2RTtBQUM3RSx3REFBb0Q7QUFFcEQsUUFBUSxDQUFDLGlCQUFpQixFQUFFLEdBQUcsRUFBRTtJQUMvQixJQUFJLE9BQXdCLENBQUM7SUFFN0IsVUFBVSxDQUFDLEdBQVMsRUFBRTtRQUNwQixNQUFNLE1BQU0sR0FBa0IsTUFBTSxjQUFJLENBQUMsbUJBQW1CLENBQUM7WUFDM0QsU0FBUyxFQUFFO2dCQUNULGtDQUFlO2dCQUNmLEVBQUUsT0FBTyxFQUFFLElBQUEsd0JBQWEsRUFBQyxVQUFVLENBQUMsRUFBRSxRQUFRLEVBQUUsRUFBRSxFQUFFO2dCQUNwRCxFQUFFLE9BQU8sRUFBRSwwQ0FBbUIsRUFBRSxRQUFRLEVBQUUsRUFBRSxFQUFFO2dCQUM5QyxFQUFFLE9BQU8sRUFBRSwwQkFBVyxFQUFFLFFBQVEsRUFBRSxFQUFFLEVBQUU7Z0JBQ3RDLEVBQUUsT0FBTyxFQUFFLCtCQUFjLEVBQUUsUUFBUSxFQUFFLEVBQUUsRUFBRTtnQkFDekMsRUFBRSxPQUFPLEVBQUUsSUFBQSx3QkFBYSxFQUFDLE1BQU0sQ0FBQyxFQUFFLFFBQVEsRUFBRSxFQUFFLEVBQUU7Z0JBQ2hELEVBQUUsT0FBTyxFQUFFLElBQUEsd0JBQWEsRUFBQyxjQUFjLENBQUMsRUFBRSxRQUFRLEVBQUUsRUFBRSxFQUFFO2dCQUN4RCxFQUFFLE9BQU8sRUFBRSxJQUFBLHdCQUFhLEVBQUMsU0FBUyxDQUFDLEVBQUUsUUFBUSxFQUFFLEVBQUUsRUFBRTtnQkFDbkQsRUFBRSxPQUFPLEVBQUUsMENBQW1CLEVBQUUsUUFBUSxFQUFFLEVBQUUsRUFBRTtnQkFDOUMsRUFBRSxPQUFPLEVBQUUsMEJBQVcsRUFBRSxRQUFRLEVBQUUsRUFBRSxFQUFFO2FBQ3ZDO1NBQ0YsQ0FBQyxDQUFDLE9BQU8sRUFBRSxDQUFDO1FBRWIsT0FBTyxHQUFHLE1BQU0sQ0FBQyxHQUFHLENBQWtCLGtDQUFlLENBQUMsQ0FBQztJQUN6RCxDQUFDLENBQUEsQ0FBQyxDQUFDO0lBRUgsRUFBRSxDQUFDLG1CQUFtQixFQUFFLEdBQUcsRUFBRTtRQUMzQixNQUFNLENBQUMsT0FBTyxDQUFDLENBQUMsV0FBVyxFQUFFLENBQUM7SUFDaEMsQ0FBQyxDQUFDLENBQUM7QUFDTCxDQUFDLENBQUMsQ0FBQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvZGV2cHJvZmlsZS9Eb2N1bWVudHMvR2l0SHViL211c2FmaXJfYmFja2VuZC9zcmMvZmxhZ3NoaXAvZmxhZ3NoaXAuc2VydmljZS5zcGVjLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IFRlc3QsIFRlc3RpbmdNb2R1bGUgfSBmcm9tICdAbmVzdGpzL3Rlc3RpbmcnO1xuaW1wb3J0IHsgZ2V0TW9kZWxUb2tlbiB9IGZyb20gJ0BuZXN0anMvbW9uZ29vc2UnO1xuaW1wb3J0IHsgRmxhZ3NoaXBTZXJ2aWNlIH0gZnJvbSAnLi9mbGFnc2hpcC5zZXJ2aWNlJztcbmltcG9ydCB7IFJlZ2lzdHJhdGlvblNlcnZpY2UgfSBmcm9tICdzcmMvcmVnaXN0cmF0aW9uL3JlZ2lzdHJhdGlvbi5zZXJ2aWNlJztcbmltcG9ydCB7IE1haWxTZXJ2aWNlIH0gZnJvbSAnc3JjL21haWwvbWFpbC5zZXJ2aWNlJztcbmltcG9ydCB7IFN0b3JhZ2VTZXJ2aWNlIH0gZnJvbSAnc3JjL3N0b3JhZ2Uvc3RvcmFnZVNlcnZpY2UnO1xuaW1wb3J0IHsgTm90aWZpY2F0aW9uU2VydmljZSB9IGZyb20gJ3NyYy9ub3RpZmljYXRpb25zL25vdGlmaWNhdGlvbi5zZXJ2aWNlJztcbmltcG9ydCB7IFVzZXJTZXJ2aWNlIH0gZnJvbSAnc3JjL3VzZXIvdXNlci5zZXJ2aWNlJztcblxuZGVzY3JpYmUoJ0ZsYWdzaGlwU2VydmljZScsICgpID0+IHtcbiAgbGV0IHNlcnZpY2U6IEZsYWdzaGlwU2VydmljZTtcblxuICBiZWZvcmVFYWNoKGFzeW5jICgpID0+IHtcbiAgICBjb25zdCBtb2R1bGU6IFRlc3RpbmdNb2R1bGUgPSBhd2FpdCBUZXN0LmNyZWF0ZVRlc3RpbmdNb2R1bGUoe1xuICAgICAgcHJvdmlkZXJzOiBbXG4gICAgICAgIEZsYWdzaGlwU2VydmljZSxcbiAgICAgICAgeyBwcm92aWRlOiBnZXRNb2RlbFRva2VuKCdGbGFnc2hpcCcpLCB1c2VWYWx1ZToge30gfSxcbiAgICAgICAgeyBwcm92aWRlOiBSZWdpc3RyYXRpb25TZXJ2aWNlLCB1c2VWYWx1ZToge30gfSxcbiAgICAgICAgeyBwcm92aWRlOiBNYWlsU2VydmljZSwgdXNlVmFsdWU6IHt9IH0sXG4gICAgICAgIHsgcHJvdmlkZTogU3RvcmFnZVNlcnZpY2UsIHVzZVZhbHVlOiB7fSB9LFxuICAgICAgICB7IHByb3ZpZGU6IGdldE1vZGVsVG9rZW4oJ1VzZXInKSwgdXNlVmFsdWU6IHt9IH0sXG4gICAgICAgIHsgcHJvdmlkZTogZ2V0TW9kZWxUb2tlbignUmVnaXN0cmF0aW9uJyksIHVzZVZhbHVlOiB7fSB9LFxuICAgICAgICB7IHByb3ZpZGU6IGdldE1vZGVsVG9rZW4oJ1BheW1lbnQnKSwgdXNlVmFsdWU6IHt9IH0sXG4gICAgICAgIHsgcHJvdmlkZTogTm90aWZpY2F0aW9uU2VydmljZSwgdXNlVmFsdWU6IHt9IH0sXG4gICAgICAgIHsgcHJvdmlkZTogVXNlclNlcnZpY2UsIHVzZVZhbHVlOiB7fSB9LFxuICAgICAgXSxcbiAgICB9KS5jb21waWxlKCk7XG5cbiAgICBzZXJ2aWNlID0gbW9kdWxlLmdldDxGbGFnc2hpcFNlcnZpY2U+KEZsYWdzaGlwU2VydmljZSk7XG4gIH0pO1xuXG4gIGl0KCdzaG91bGQgYmUgZGVmaW5lZCcsICgpID0+IHtcbiAgICBleHBlY3Qoc2VydmljZSkudG9CZURlZmluZWQoKTtcbiAgfSk7XG59KTtcbiJdLCJ2ZXJzaW9uIjozfQ==

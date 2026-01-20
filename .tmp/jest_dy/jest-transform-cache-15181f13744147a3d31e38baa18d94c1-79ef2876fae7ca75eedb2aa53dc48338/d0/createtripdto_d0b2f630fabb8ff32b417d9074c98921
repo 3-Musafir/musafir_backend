@@ -1,0 +1,8 @@
+4b8035f53e7f19f7c790cec4395383a1
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CreateTripDto = void 0;
+class CreateTripDto {
+}
+exports.CreateTripDto = CreateTripDto;
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3RyaXAvZHRvL2NyZWF0ZS10cmlwLmR0by50cyIsIm1hcHBpbmdzIjoiOzs7QUFBQSxNQUFhLGFBQWE7Q0FBRztBQUE3QixzQ0FBNkIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3RyaXAvZHRvL2NyZWF0ZS10cmlwLmR0by50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJleHBvcnQgY2xhc3MgQ3JlYXRlVHJpcER0byB7fVxuIl0sInZlcnNpb24iOjN9

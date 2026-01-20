@@ -1,0 +1,29 @@
+1eddf9d4c5c0d02127ece1812694c27f
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OptionalJwtAuthGuard = void 0;
+const common_1 = require("@nestjs/common");
+const passport_1 = require("@nestjs/passport");
+/**
+ * Passport JWT guard that never blocks requests:
+ * - If a valid token is present, attaches `req.user`
+ * - If token is missing/invalid, proceeds with `req.user = null`
+ */
+let OptionalJwtAuthGuard = class OptionalJwtAuthGuard extends (0, passport_1.AuthGuard)('jwt') {
+    handleRequest(err, user) {
+        if (err)
+            return null;
+        return user || null;
+    }
+};
+exports.OptionalJwtAuthGuard = OptionalJwtAuthGuard;
+exports.OptionalJwtAuthGuard = OptionalJwtAuthGuard = __decorate([
+    (0, common_1.Injectable)()
+], OptionalJwtAuthGuard);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL2F1dGgvZ3VhcmRzL29wdGlvbmFsLWp3dC5ndWFyZC50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBNEM7QUFDNUMsK0NBQTZDO0FBRTdDOzs7O0dBSUc7QUFFSSxJQUFNLG9CQUFvQixHQUExQixNQUFNLG9CQUFxQixTQUFRLElBQUEsb0JBQVMsRUFBQyxLQUFLLENBQUM7SUFDeEQsYUFBYSxDQUFDLEdBQVEsRUFBRSxJQUFTO1FBQy9CLElBQUksR0FBRztZQUFFLE9BQU8sSUFBSSxDQUFDO1FBQ3JCLE9BQU8sSUFBSSxJQUFJLElBQUksQ0FBQztJQUN0QixDQUFDO0NBQ0YsQ0FBQTtBQUxZLG9EQUFvQjsrQkFBcEIsb0JBQW9CO0lBRGhDLElBQUEsbUJBQVUsR0FBRTtHQUNBLG9CQUFvQixDQUtoQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvZGV2cHJvZmlsZS9Eb2N1bWVudHMvR2l0SHViL211c2FmaXJfYmFja2VuZC9zcmMvYXV0aC9ndWFyZHMvb3B0aW9uYWwtand0Lmd1YXJkLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IEluamVjdGFibGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBBdXRoR3VhcmQgfSBmcm9tICdAbmVzdGpzL3Bhc3Nwb3J0JztcblxuLyoqXG4gKiBQYXNzcG9ydCBKV1QgZ3VhcmQgdGhhdCBuZXZlciBibG9ja3MgcmVxdWVzdHM6XG4gKiAtIElmIGEgdmFsaWQgdG9rZW4gaXMgcHJlc2VudCwgYXR0YWNoZXMgYHJlcS51c2VyYFxuICogLSBJZiB0b2tlbiBpcyBtaXNzaW5nL2ludmFsaWQsIHByb2NlZWRzIHdpdGggYHJlcS51c2VyID0gbnVsbGBcbiAqL1xuQEluamVjdGFibGUoKVxuZXhwb3J0IGNsYXNzIE9wdGlvbmFsSnd0QXV0aEd1YXJkIGV4dGVuZHMgQXV0aEd1YXJkKCdqd3QnKSB7XG4gIGhhbmRsZVJlcXVlc3QoZXJyOiBhbnksIHVzZXI6IGFueSkge1xuICAgIGlmIChlcnIpIHJldHVybiBudWxsO1xuICAgIHJldHVybiB1c2VyIHx8IG51bGw7XG4gIH1cbn1cblxuIl0sInZlcnNpb24iOjN9

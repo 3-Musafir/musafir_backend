@@ -601,6 +601,7 @@ export class UserService {
         title: 'Your referral verified a Musafir',
         message: `${applicant.fullName || 'A Musafir'} has been verified using your referral code${verifyUser.flagshipId ? ` for flagship ${verifyUser.flagshipId}` : ''}.`,
         type: 'referral',
+        link: '/referrals',
         metadata: {
           applicantId: applicant._id?.toString(),
           flagshipId: verifyUser.flagshipId,
@@ -1170,6 +1171,7 @@ export class UserService {
       title: 'Verification call requested',
       message: `${user?.fullName || 'A Musafir'} requested an onboarding call for verification${(user as any)?.verification?.flagshipId ? ` (flagship ${(user as any).verification.flagshipId})` : ''}.`,
       type: 'verification',
+      link: (user as any)?._id ? `/admin/user/${String((user as any)._id)}` : '/admin',
       metadata: {
         userId: (user as any)?._id?.toString?.(),
         flagshipId: (user as any)?.verification?.flagshipId,

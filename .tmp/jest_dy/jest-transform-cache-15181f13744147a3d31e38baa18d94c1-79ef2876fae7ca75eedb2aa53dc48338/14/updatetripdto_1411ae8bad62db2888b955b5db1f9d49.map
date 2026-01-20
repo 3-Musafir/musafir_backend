@@ -1,0 +1,1 @@
+{"file":"/Users/devprofile/Documents/GitHub/musafir_backend/src/trip/dto/update-trip.dto.ts","mappings":";;;AAEA,MAAa,aAAa;CAAG;AAA7B,sCAA6B","names":[],"sources":["/Users/devprofile/Documents/GitHub/musafir_backend/src/trip/dto/update-trip.dto.ts"],"sourcesContent":["import { CreateTripDto } from './create-trip.dto';\n\nexport class UpdateTripDto {}\n"],"version":3}

@@ -1,0 +1,81 @@
+f6965c3fce20749b670440d0ab97d1ee
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TripController = void 0;
+const common_1 = require("@nestjs/common");
+const trip_service_1 = require("./trip.service");
+const create_trip_dto_1 = require("./dto/create-trip.dto");
+const update_trip_dto_1 = require("./dto/update-trip.dto");
+let TripController = class TripController {
+    constructor(tripService) {
+        this.tripService = tripService;
+    }
+    create(createTripDto) {
+        return this.tripService.create(createTripDto);
+    }
+    findAll() {
+        return this.tripService.findAll();
+    }
+    findOne(id) {
+        return this.tripService.findOne(+id);
+    }
+    update(id, updateTripDto) {
+        return this.tripService.update(+id, updateTripDto);
+    }
+    remove(id) {
+        return this.tripService.remove(+id);
+    }
+};
+exports.TripController = TripController;
+__decorate([
+    (0, common_1.Post)(),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_trip_dto_1.CreateTripDto]),
+    __metadata("design:returntype", void 0)
+], TripController.prototype, "create", null);
+__decorate([
+    (0, common_1.Get)(),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], TripController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], TripController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_trip_dto_1.UpdateTripDto]),
+    __metadata("design:returntype", void 0)
+], TripController.prototype, "update", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], TripController.prototype, "remove", null);
+exports.TripController = TripController = __decorate([
+    (0, common_1.Controller)('trip'),
+    __metadata("design:paramtypes", [trip_service_1.TripService])
+], TripController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3RyaXAvdHJpcC5jb250cm9sbGVyLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7Ozs7OztBQUFBLDJDQUFtRjtBQUNuRixpREFBNkM7QUFDN0MsMkRBQXNEO0FBQ3RELDJEQUFzRDtBQUcvQyxJQUFNLGNBQWMsR0FBcEIsTUFBTSxjQUFjO0lBQ3pCLFlBQTZCLFdBQXdCO1FBQXhCLGdCQUFXLEdBQVgsV0FBVyxDQUFhO0lBQUcsQ0FBQztJQUd6RCxNQUFNLENBQVMsYUFBNEI7UUFDekMsT0FBTyxJQUFJLENBQUMsV0FBVyxDQUFDLE1BQU0sQ0FBQyxhQUFhLENBQUMsQ0FBQztJQUNoRCxDQUFDO0lBR0QsT0FBTztRQUNMLE9BQU8sSUFBSSxDQUFDLFdBQVcsQ0FBQyxPQUFPLEVBQUUsQ0FBQztJQUNwQyxDQUFDO0lBR0QsT0FBTyxDQUFjLEVBQVU7UUFDN0IsT0FBTyxJQUFJLENBQUMsV0FBVyxDQUFDLE9BQU8sQ0FBQyxDQUFDLEVBQUUsQ0FBQyxDQUFDO0lBQ3ZDLENBQUM7SUFHRCxNQUFNLENBQWMsRUFBVSxFQUFVLGFBQTRCO1FBQ2xFLE9BQU8sSUFBSSxDQUFDLFdBQVcsQ0FBQyxNQUFNLENBQUMsQ0FBQyxFQUFFLEVBQUUsYUFBYSxDQUFDLENBQUM7SUFDckQsQ0FBQztJQUdELE1BQU0sQ0FBYyxFQUFVO1FBQzVCLE9BQU8sSUFBSSxDQUFDLFdBQVcsQ0FBQyxNQUFNLENBQUMsQ0FBQyxFQUFFLENBQUMsQ0FBQztJQUN0QyxDQUFDO0NBQ0YsQ0FBQTtBQTNCWSx3Q0FBYztBQUl6QjtJQURDLElBQUEsYUFBSSxHQUFFO0lBQ0MsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOztxQ0FBZ0IsK0JBQWE7OzRDQUUxQztBQUdEO0lBREMsSUFBQSxZQUFHLEdBQUU7Ozs7NkNBR0w7QUFHRDtJQURDLElBQUEsWUFBRyxFQUFDLEtBQUssQ0FBQztJQUNGLFdBQUEsSUFBQSxjQUFLLEVBQUMsSUFBSSxDQUFDLENBQUE7Ozs7NkNBRW5CO0FBR0Q7SUFEQyxJQUFBLGNBQUssRUFBQyxLQUFLLENBQUM7SUFDTCxXQUFBLElBQUEsY0FBSyxFQUFDLElBQUksQ0FBQyxDQUFBO0lBQWMsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs2Q0FBZ0IsK0JBQWE7OzRDQUVuRTtBQUdEO0lBREMsSUFBQSxlQUFNLEVBQUMsS0FBSyxDQUFDO0lBQ04sV0FBQSxJQUFBLGNBQUssRUFBQyxJQUFJLENBQUMsQ0FBQTs7Ozs0Q0FFbEI7eUJBMUJVLGNBQWM7SUFEMUIsSUFBQSxtQkFBVSxFQUFDLE1BQU0sQ0FBQztxQ0FFeUIsMEJBQVc7R0FEMUMsY0FBYyxDQTJCMUIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL2RldnByb2ZpbGUvRG9jdW1lbnRzL0dpdEh1Yi9tdXNhZmlyX2JhY2tlbmQvc3JjL3RyaXAvdHJpcC5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IENvbnRyb2xsZXIsIEdldCwgUG9zdCwgQm9keSwgUGF0Y2gsIFBhcmFtLCBEZWxldGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBUcmlwU2VydmljZSB9IGZyb20gJy4vdHJpcC5zZXJ2aWNlJztcbmltcG9ydCB7IENyZWF0ZVRyaXBEdG8gfSBmcm9tICcuL2R0by9jcmVhdGUtdHJpcC5kdG8nO1xuaW1wb3J0IHsgVXBkYXRlVHJpcER0byB9IGZyb20gJy4vZHRvL3VwZGF0ZS10cmlwLmR0byc7XG5cbkBDb250cm9sbGVyKCd0cmlwJylcbmV4cG9ydCBjbGFzcyBUcmlwQ29udHJvbGxlciB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUgcmVhZG9ubHkgdHJpcFNlcnZpY2U6IFRyaXBTZXJ2aWNlKSB7fVxuXG4gIEBQb3N0KClcbiAgY3JlYXRlKEBCb2R5KCkgY3JlYXRlVHJpcER0bzogQ3JlYXRlVHJpcER0bykge1xuICAgIHJldHVybiB0aGlzLnRyaXBTZXJ2aWNlLmNyZWF0ZShjcmVhdGVUcmlwRHRvKTtcbiAgfVxuXG4gIEBHZXQoKVxuICBmaW5kQWxsKCkge1xuICAgIHJldHVybiB0aGlzLnRyaXBTZXJ2aWNlLmZpbmRBbGwoKTtcbiAgfVxuXG4gIEBHZXQoJzppZCcpXG4gIGZpbmRPbmUoQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcpIHtcbiAgICByZXR1cm4gdGhpcy50cmlwU2VydmljZS5maW5kT25lKCtpZCk7XG4gIH1cblxuICBAUGF0Y2goJzppZCcpXG4gIHVwZGF0ZShAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZywgQEJvZHkoKSB1cGRhdGVUcmlwRHRvOiBVcGRhdGVUcmlwRHRvKSB7XG4gICAgcmV0dXJuIHRoaXMudHJpcFNlcnZpY2UudXBkYXRlKCtpZCwgdXBkYXRlVHJpcER0byk7XG4gIH1cblxuICBARGVsZXRlKCc6aWQnKVxuICByZW1vdmUoQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcpIHtcbiAgICByZXR1cm4gdGhpcy50cmlwU2VydmljZS5yZW1vdmUoK2lkKTtcbiAgfVxufVxuIl0sInZlcnNpb24iOjN9

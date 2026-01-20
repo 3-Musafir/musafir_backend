@@ -77,6 +77,8 @@ export class NotificationService {
   ) {
     if (!userId || !profileStatus) return null;
 
+    const link = '/userSettings';
+
     const missingFields =
       profileStatus.requiredFor?.general && profileStatus.requiredFor.general.length > 0
         ? profileStatus.requiredFor.general
@@ -119,6 +121,7 @@ export class NotificationService {
       existing.title = existing.title || 'Complete your profile';
       existing.message = message;
       existing.type = existing.type || 'general';
+      existing.link = existing.link || link;
       (existing as any).metadata = { ...(existing as any).metadata, ...metadata };
       existing.readAt = null;
 
@@ -133,6 +136,7 @@ export class NotificationService {
       title: 'Complete your profile',
       message,
       type: 'general',
+      link,
       metadata,
     });
     const saved = await created.save();

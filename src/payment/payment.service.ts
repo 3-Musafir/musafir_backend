@@ -428,7 +428,7 @@ export class PaymentService {
         title: 'Refund request received',
         message: `Estimated refund: Rs.${quote.refundAmount.toLocaleString()} (includes PKR ${quote.processingFee}).`,
         type: 'refund',
-        link: '/passport',
+        link: registrationIdString ? `/musafir/refund/${registrationIdString}` : '/passport',
         metadata: {
           refundId: savedRefund._id?.toString(),
           registrationId: registrationIdString,
@@ -957,48 +957,62 @@ export class PaymentService {
         const user = reg.user;
         const flagship = reg.flagship;
         const registrationId = reg?._id?.toString();
+        const userId = user?._id ? String(user._id) : user?.toString?.();
+        const tripName = flagship?.tripName;
+        const flagshipId = flagship?._id?.toString?.() ?? flagship?.toString?.();
         const paymentUrl =
           process.env.FRONTEND_URL && registrationId
             ? `${process.env.FRONTEND_URL}/musafir/payment/${registrationId}`
             : undefined;
 
-        if (user && user.email && flagship) {
-          await this.mailService.sendPaymentApprovedEmail(
-            user.email,
-            user.fullName || 'Musafir',
-            payment.amount,
-            flagship.tripName,
-            payment.createdAt,
-            {
-              remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
-              paymentUrl,
-            },
-          );
-          // Also send an in-app notification
-          await this.notificationService.createForUser(String(user._id), {
-            title: 'Payment approved',
-            message:
-              typeof remainingDue === 'number' && remainingDue > 0
-                ? `Your payment for ${flagship.tripName} was approved. Remaining due: Rs.${remainingDue.toLocaleString()}.`
-                : `Your payment for ${flagship.tripName} was approved. Your seat is confirmed.`,
-            type: 'payment',
-            link:
-              typeof remainingDue === 'number' && remainingDue > 0 && registrationId
-                ? `/musafir/payment/${registrationId}`
-                : '/passport',
-            metadata: {
-              paymentId: payment._id?.toString(),
-              registrationId: reg._id?.toString(),
-              flagshipId: flagship._id?.toString(),
-              amount: payment.amount,
-              remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
-            },
-          });
+        if (userId && tripName) {
+          try {
+            await this.notificationService.createForUser(userId, {
+              title: 'Payment approved',
+              message:
+                typeof remainingDue === 'number' && remainingDue > 0
+                  ? `Your payment for ${tripName} was approved. Remaining due: Rs.${remainingDue.toLocaleString()}.`
+                  : `Your payment for ${tripName} was approved. Your seat is confirmed.`,
+              type: 'payment',
+              link:
+                typeof remainingDue === 'number' && remainingDue > 0 && registrationId
+                  ? `/musafir/payment/${registrationId}`
+                  : '/passport',
+              metadata: {
+                paymentId: payment._id?.toString(),
+                registrationId: reg._id?.toString(),
+                flagshipId,
+                amount: payment.amount,
+                remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
+              },
+            });
+          } catch (error) {
+            console.log('Failed to create payment approved notification:', error);
+          }
+        }
+
+        if (user && typeof user.email === 'string' && user.email && tripName) {
+          try {
+            await this.mailService.sendPaymentApprovedEmail(
+              user.email,
+              user.fullName || 'Musafir',
+              payment.amount,
+              tripName,
+              payment.createdAt,
+              {
+                remainingDue:
+                  typeof remainingDue === 'number' ? remainingDue : undefined,
+                paymentUrl,
+              },
+            );
+          } catch (error) {
+            console.log('Failed to send payment approved email:', error);
+          }
         }
       }
     } catch (error) {
-      console.log('Failed to send payment approved email:', error);
-      // Don't throw error - email failure shouldn't prevent payment approval
+      console.log('Failed to load payment data for approved payment notifications:', error);
+      // Don't throw error - notification/email failure shouldn't prevent payment approval
     }
 
     return payment;
@@ -1017,9 +1031,9 @@ export class PaymentService {
         paymentId: null,
       });
 
-      // Send payment rejected email if user has an email
+      // Notify user about rejection (in-app always, email when available).
       try {
-        // Get populated payment data for email
+        // Get populated payment data for email/notification
         const populatedPayment = await this.paymentModel
           .findById(id)
           .populate({
@@ -1032,20 +1046,51 @@ export class PaymentService {
           const reg = populatedPayment.registration as any;
           const user = reg.user;
           const flagship = reg.flagship;
+          const userId = user?._id ? String(user._id) : user?.toString?.();
+          const tripName = flagship?.tripName;
+          const flagshipId = flagship?._id?.toString?.() ?? flagship?.toString?.();
 
-          if (user && user.email && flagship) {
-            await this.mailService.sendPaymentRejectedEmail(
-              user.email,
-              user.fullName || 'Musafir',
-              payment.amount,
-              flagship.tripName
-              // Note: We could add a reason parameter to the rejectPayment method if needed, unclear right now 
-            );
+          if (userId && tripName) {
+            try {
+              await this.notificationService.createForUser(userId, {
+                title: 'Payment rejected',
+                message: `Your payment for ${tripName} was rejected. Please resubmit your payment to confirm your seat.`,
+                type: 'payment',
+                link: reg?._id
+                  ? `/musafir/payment/${String(reg._id)}`
+                  : '/passport',
+                metadata: {
+                  paymentId: payment._id?.toString(),
+                  registrationId: reg?._id?.toString(),
+                  flagshipId,
+                  amount: payment.amount,
+                },
+              });
+            } catch (error) {
+              console.log('Failed to create payment rejected notification:', error);
+            }
+          }
+
+          if (user && typeof user.email === 'string' && user.email && tripName) {
+            try {
+              await this.mailService.sendPaymentRejectedEmail(
+                user.email,
+                user.fullName || 'Musafir',
+                payment.amount,
+                tripName,
+                // Note: We could add a reason parameter to the rejectPayment method if needed, unclear right now
+              );
+            } catch (error) {
+              console.log('Failed to send payment rejected email:', error);
+            }
           }
         }
       } catch (error) {
-        console.log('Failed to send payment rejected email:', error);
-        // Don't throw error - email failure shouldn't prevent payment rejection
+        console.log(
+          'Failed to load payment data for rejected payment notifications:',
+          error,
+        );
+        // Don't throw error - notification/email failure shouldn't prevent payment rejection
       }
     }
 
