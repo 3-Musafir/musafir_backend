@@ -14,6 +14,8 @@ import { RefundSchema } from './schema/refund.schema';
 import { RegistrationSchema } from 'src/registration/schemas/registration.schema';
 import { MailModule } from 'src/mail/mail.module';
 import { NotificationModule } from 'src/notifications/notification.module';
+import { RefundSettlementModule } from 'src/refund-settlement/refund-settlement.module';
+import { WalletModule } from 'src/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { NotificationModule } from 'src/notifications/notification.module';
     UserModule,
     MailModule,
     NotificationModule,
+    RefundSettlementModule,
+    WalletModule,
   ],
   controllers: [PaymentController],
   providers: [PaymentService, StorageService, ConfigService],

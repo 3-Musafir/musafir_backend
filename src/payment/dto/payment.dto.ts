@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateBankAccountDto {
   @ApiProperty({
@@ -65,6 +65,25 @@ export class CreatePaymentDto {
 
   @ApiProperty({
     example: 0,
+    description: 'Wallet credits to apply (PKR)',
+    required: false,
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  walletAmount?: number;
+
+  @ApiProperty({
+    example: 'b7b0f5d7-2e7c-4c2a-9ab2-8e8f7c0a6a61',
+    description: 'Client-generated id for wallet application idempotency',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  walletUseId?: string;
+
+  @ApiProperty({
+    example: 0,
     description: 'Discount amount to be applied',
     required: false,
   })
@@ -113,4 +132,30 @@ export class RequestRefundDto {
   @IsNotEmpty()
   @IsNumber()
   rating: number;
+}
+
+export class GetRefundsQueryDto {
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: ['all', 'pending', 'approved_not_credited', 'credited', 'rejected'],
+    description: 'Refund list grouping for admin views.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'pending', 'approved_not_credited', 'credited', 'rejected'])
+  group?: 'all' | 'pending' | 'approved_not_credited' | 'credited' | 'rejected';
+
+  @ApiPropertyOptional({ example: 1, description: '1-based page' })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 20, description: 'Page size' })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  limit?: number;
 }

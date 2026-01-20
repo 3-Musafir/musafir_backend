@@ -84,4 +84,17 @@ export class RegistrationController {
         message: await this.registrationService.sendReEvaluateRequestToJury(body.registrationId, user)
       }
     }
-}
+
+    @UseGuards(JwtAuthGuard)
+    @Post('/:registrationId/cancel')
+    async cancelSeat(
+      @GetUser() user: User,
+      @Param('registrationId') registrationId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Seat cancelled successfully',
+        data: await this.registrationService.cancelSeat(registrationId, user),
+      };
+    }
+} 

@@ -60,3 +60,5 @@ PaymentSchema.virtual('userDetails', {
   foreignField: '_id',
   justOne: true,
 });
+
+PaymentSchema.index({ registration: 1, status: 1, createdAt: -1 });

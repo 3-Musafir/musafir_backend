@@ -9,6 +9,7 @@ import { MailModule } from '../mail/mail.module';
 import { StorageService } from 'src/storage/storageService';
 import { ConfigService } from '@nestjs/config';
 import { NotificationModule } from 'src/notifications/notification.module';
+import { WalletModule } from 'src/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { NotificationModule } from 'src/notifications/notification.module';
     AuthModule,
     MailModule,
     NotificationModule,
+    WalletModule,
   ],
   controllers: [UserController],
   providers: [UserService, StorageService, ConfigService],

@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
   UploadedFile,
   UseInterceptors,
@@ -16,6 +17,7 @@ import { PaymentService } from './payment.service';
 import {
   CreateBankAccountDto,
   CreatePaymentDto,
+  GetRefundsQueryDto,
   RequestRefundDto,
 } from './dto/payment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -97,13 +99,22 @@ export class PaymentController {
     return this.paymentService.requestRefund(requestRefundDto, user);
   }
 
+  @Get('refund-quote/:registrationId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get refund quote based on policy' })
+  @ApiOkResponse({})
+  @UseGuards(JwtAuthGuard)
+  refundQuote(@GetUser() user: User, @Param('registrationId') registrationId: string) {
+    return this.paymentService.getRefundQuote(registrationId, user);
+  }
+
   @Get('get-refunds')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Refunds' })
   @ApiOkResponse({})
   @Roles('admin')
-  getRefunds() {
-    return this.paymentService.getRefunds();
+  getRefunds(@Query() query: GetRefundsQueryDto) {
+    return this.paymentService.getRefunds(query);
   }
 
   @Patch('approve-refund/:id')
@@ -111,8 +122,26 @@ export class PaymentController {
   @ApiOperation({ summary: 'Approve Refund' })
   @ApiOkResponse({})
   @Roles('admin')
-  approveRefund(@Param('id') id: string) {
-    return this.paymentService.approveRefund(id);
+  approveRefund(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.approveRefund(id, { credit: true, admin });
+  }
+
+  @Patch('approve-refund-no-credit/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve Refund (defer wallet credit)' })
+  @ApiOkResponse({})
+  @Roles('admin')
+  approveRefundNoCredit(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.approveRefund(id, { credit: false, admin });
+  }
+
+  @Patch('post-refund-credit/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Post wallet credit for an approved refund' })
+  @ApiOkResponse({})
+  @Roles('admin')
+  postRefundCredit(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.postRefundCredit(id, admin);
   }
 
   @Patch('reject-refund/:id')
@@ -120,8 +149,8 @@ export class PaymentController {
   @ApiOperation({ summary: 'Reject Refund' })
   @ApiOkResponse({})
   @Roles('admin')
-  rejectRefund(@Param('id') id: string) {
-    return this.paymentService.rejectRefund(id);
+  rejectRefund(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.rejectRefund(id, admin);
   }
 
   @Post('create-payment')

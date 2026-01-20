@@ -12,6 +12,7 @@ import { PaymentSchema } from 'src/payment/schema/payment.schema';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from 'src/storage/storageService';
 import { NotificationModule } from 'src/notifications/notification.module';
+import { UserModule } from 'src/user/user.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationModule } from 'src/notifications/notification.module';
     RegistrationModule,
     MailModule,
     NotificationModule,
+    UserModule,
   ],
   controllers: [FlagshipController],
   providers: [FlagshipService, StorageService, ConfigService],

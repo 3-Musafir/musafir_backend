@@ -17,6 +17,8 @@ import { RatingModule } from './Rating/rating.module';
 import { PaymentModule } from './payment/payment.module';
 import { NotificationModule } from './notifications/notification.module';
 import { CompanyProfileModule } from './company-profile/company-profile.module';
+import { WalletModule } from './wallet/wallet.module';
+import { WalletTopupModule } from './wallet-topup/wallet-topup.module';
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -39,6 +41,8 @@ if (!mongoUri) {
     RatingModule,
     NotificationModule,
     CompanyProfileModule,
+    WalletModule,
+    WalletTopupModule,
   ],
   controllers: [AppController],
   providers: [

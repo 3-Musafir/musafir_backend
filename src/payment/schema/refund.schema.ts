@@ -8,6 +8,13 @@ export interface Refund extends Document {
   feedback: string;
   rating: number;
   status: 'pending' | 'cleared' | 'rejected';
+  amountPaid?: number;
+  refundPercent?: number;
+  processingFee?: number;
+  refundAmount?: number;
+  tierLabel?: string;
+  policyLink?: string;
+  policyAppliedAt?: Date;
 }
 
 export const RefundSchema = new Schema<Refund>(
@@ -39,6 +46,13 @@ export const RefundSchema = new Schema<Refund>(
       enum: ['pending', 'cleared', 'rejected'],
       default: 'pending',
     },
+    amountPaid: { type: Number, required: false },
+    refundPercent: { type: Number, required: false },
+    processingFee: { type: Number, required: false },
+    refundAmount: { type: Number, required: false },
+    tierLabel: { type: String, required: false },
+    policyLink: { type: String, required: false },
+    policyAppliedAt: { type: Date, required: false },
   },
   {
     timestamps: true,

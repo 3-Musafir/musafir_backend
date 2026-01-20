@@ -22,10 +22,21 @@ export class Registration {
   readonly tripType?: string;
   readonly price: number;
   readonly amountDue: number;
+  readonly walletPaid?: number;
   readonly discountApplied?: number;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
   ratingId?: string | Rating;
-  status: 'pending' | 'confirmed' | 'rejected' | 'notReserved' | 'refunded' | 'refundProcessing' | 'completed';
+  status:
+    | 'pending'
+    | 'accepted'
+    | 'confirmed'
+    | 'rejected'
+    | 'notReserved'
+    | 'cancelled'
+    | 'refundProcessing'
+    | 'refunded'
+    | 'completed'
+    | 'didntPick';
   comment: string;
 }

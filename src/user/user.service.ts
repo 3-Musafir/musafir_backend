@@ -33,6 +33,7 @@ import {
   isProfileComplete as isProfileCompleteUtil,
 } from './profile-status.util';
 import { NotificationService } from 'src/notifications/notification.service';
+import { WalletService } from 'src/wallet/wallet.service';
 
 @Injectable()
 export class UserService {
@@ -46,7 +47,100 @@ export class UserService {
     private readonly authService: AuthService,
     private readonly storageService: StorageService,
     private readonly notificationService: NotificationService,
+    private readonly walletService: WalletService,
   ) { }
+
+  private async creditSignupReferrerIfEligible(savedUser: UserDocument) {
+    const referrerId = savedUser?.referredBy?.toString?.();
+    if (!referrerId) return;
+
+    try {
+      await this.walletService.credit({
+        userId: referrerId,
+        amount: 100,
+        type: 'referral_signup_credit',
+        sourceId: savedUser._id.toString(),
+        sourceType: 'referral_signup',
+        metadata: {
+          sourceId: savedUser._id.toString(),
+          referredUserId: savedUser._id.toString(),
+        },
+      });
+
+      await this.notificationService.createForUser(referrerId, {
+        title: 'Referral bonus',
+        message: `You earned Rs.100 wallet credit because ${savedUser.fullName || 'a Musafir'} signed up using your referral code.`,
+        type: 'wallet',
+        link: '/wallet',
+        metadata: {
+          referredUserId: savedUser._id.toString(),
+          amount: 100,
+          kind: 'referral_signup_credit',
+        },
+      });
+    } catch (err) {
+      console.log('Failed to credit signup referral bonus:', err);
+    }
+  }
+
+  private async creditVerificationReferrersIfEligible(verifiedUser: UserDocument) {
+    const referralCodes = (verifiedUser as any)?.verification?.ReferralIDs;
+    if (!Array.isArray(referralCodes) || referralCodes.length === 0) return;
+
+    try {
+      const referrers = await this.userModel
+        .find({
+          referralID: { $in: referralCodes },
+          'verification.status': VerificationStatus.VERIFIED,
+          roles: { $ne: 'admin' },
+        })
+        .select('_id fullName referralID')
+        .lean()
+        .exec();
+
+      await Promise.all(
+        referrers.map(async (referrer: any) => {
+          const referrerId = referrer?._id?.toString?.();
+          if (!referrerId) return;
+          const sourceId = `${verifiedUser._id.toString()}:verification:${referrerId}`;
+
+          await this.walletService.credit({
+            userId: referrerId,
+            amount: 200,
+            type: 'referral_verification_credit',
+            sourceId,
+            sourceType: 'referral_verification',
+            metadata: {
+              sourceId,
+              verifiedUserId: verifiedUser._id.toString(),
+              referralCode: referrer.referralID,
+            },
+          });
+
+          await this.notificationService.createForUser(referrerId, {
+            title: 'Verification bonus',
+            message: `You earned Rs.200 wallet credit because ${verifiedUser.fullName || 'a Musafir'} was verified using your referral code.`,
+            type: 'wallet',
+            link: '/wallet',
+            metadata: {
+              verifiedUserId: verifiedUser._id.toString(),
+              amount: 200,
+              kind: 'referral_verification_credit',
+            },
+          });
+        }),
+      );
+    } catch (err) {
+      console.log('Failed to credit verification referral bonuses:', err);
+    }
+  }
+
+  async awardVerificationReferralCredits(userId: string) {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) return;
+    if ((user as any)?.verification?.status !== VerificationStatus.VERIFIED) return;
+    await this.creditVerificationReferrersIfEligible(user);
+  }
 
   private isProfileComplete(user: Partial<User>) {
     return isProfileCompleteUtil(user);
@@ -158,6 +252,7 @@ export class UserService {
     const password = createUserDto.password;
     await this.mailService.sendEmailVerification(user.email, password);
     const savedUser = await user.save();
+    await this.creditSignupReferrerIfEligible(savedUser as any);
     return {
       userId: savedUser._id,
       verificationId: (savedUser.verification as any).VerificationID,
@@ -175,7 +270,9 @@ export class UserService {
       user.emailVerified = true;
       user.verification.VerificationID = v4();
       user.verification.status = VerificationStatus.UNVERIFIED;
-      await user.save();
+      const saved = await user.save();
+      await this.creditSignupReferrerIfEligible(saved as any);
+      user = saved as any;
     }
     const userWithStatus = this.addProfileStatus(user);
     return {
@@ -197,7 +294,9 @@ export class UserService {
       user.emailVerified = true;
       user.verification.VerificationID = v4();
       user.verification.status = VerificationStatus.UNVERIFIED;
-      await user.save();
+      const saved = await user.save();
+      await this.creditSignupReferrerIfEligible(saved as any);
+      user = saved as any;
     }
     const userWithStatus = this.addProfileStatus(user);
     return {
@@ -626,6 +725,7 @@ export class UserService {
     }
     user.markModified('verification');
     const savedUser = await user.save();
+    await this.creditVerificationReferrersIfEligible(savedUser as any);
 
     // Send verification approved email if user has an email
     if (user.email) {
@@ -987,6 +1087,9 @@ export class UserService {
     user.markModified('verification');
 
     const savedUser = await user.save();
+    if (status === VerificationStatus.VERIFIED) {
+      await this.creditVerificationReferrersIfEligible(savedUser as any);
+    }
 
     if (status === VerificationStatus.VERIFIED && user.email) {
       try {

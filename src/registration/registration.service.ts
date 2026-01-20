@@ -1,6 +1,8 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -10,6 +12,8 @@ import { User } from 'src/user/interfaces/user.interface';
 import { MailService } from 'src/mail/mail.service';
 import mongoose from 'mongoose';
 import { StorageService } from 'src/storage/storageService';
+import { NotificationService } from 'src/notifications/notification.service';
+import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 
 @Injectable()
 export class RegistrationService {
@@ -19,6 +23,7 @@ export class RegistrationService {
     @InjectModel('Flagship') private readonly flagshipModel: Model<any>,
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
+    private readonly notificationService: NotificationService,
   ) { }
 
   private async syncCompletedRegistrationsForUser(userId: string): Promise<void> {
@@ -234,6 +239,91 @@ export class RegistrationService {
     } catch (error) {
       throw new Error(`Failed to fetch registration data: ${error.message}`);
     }
+  }
+
+  async cancelSeat(registrationId: string, user: User) {
+    const userId = user?._id?.toString();
+    if (!userId) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'cancel_auth_required',
+      });
+    }
+
+    const registration: any = await this.registrationModel
+      .findById(registrationId)
+      .lean()
+      .exec();
+    if (!registration) {
+      throw new NotFoundException('Registration not found');
+    }
+
+    const registrationUserId = registration.userId || registration.user;
+    if (!registrationUserId || String(registrationUserId) !== String(userId)) {
+      throw new ForbiddenException('You can only cancel your own seat.');
+    }
+
+    const status = String(registration.status || '');
+    if (status !== 'confirmed') {
+      throw new BadRequestException({
+        message: 'Only confirmed seats can be cancelled.',
+        code: 'cancel_not_eligible',
+      });
+    }
+
+    const updated = await this.registrationModel.findOneAndUpdate(
+      { _id: registration._id, userId: registrationUserId, status: 'confirmed' },
+      { $set: { status: 'cancelled' } },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new BadRequestException({
+        message: 'Seat could not be cancelled. Please retry.',
+        code: 'cancel_state_changed',
+      });
+    }
+
+    try {
+      const flagshipId = registration.flagship || registration.flagshipId;
+      const flagship = await this.flagshipModel
+        .findById(flagshipId)
+        .select('tripName')
+        .lean()
+        .exec();
+      const tripName = Array.isArray(flagship)
+        ? (flagship?.[0] as any)?.tripName || 'your trip'
+        : (flagship as any)?.tripName || 'your trip';
+
+      await this.notificationService.createForUser(userId, {
+        title: 'Seat cancelled',
+        message: `Your seat for ${tripName} has been cancelled. You can request a refund based on the refund policy.`,
+        type: 'refund',
+        link: `/musafir/refund/${registrationId}`,
+        metadata: { registrationId: String(registrationId), policyLink: REFUND_POLICY_LINK },
+      });
+
+      if ((user as any)?.email) {
+        await this.mailService.sendMail(
+          (user as any).email,
+          'Your 3Musafir seat has been cancelled',
+          './seat-cancelled',
+          {
+            fullName: (user as any).fullName || 'Musafir',
+            tripName,
+            refundPolicyLink: REFUND_POLICY_LINK,
+            refundUrl:
+              process.env.FRONTEND_URL && registrationId
+                ? `${process.env.FRONTEND_URL}/musafir/refund/${registrationId}`
+                : undefined,
+          },
+        );
+      }
+    } catch (e) {
+      console.log('Failed to send cancellation comms:', e);
+    }
+
+    return updated;
   }
 
 

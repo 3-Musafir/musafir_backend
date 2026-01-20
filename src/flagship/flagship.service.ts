@@ -21,6 +21,7 @@ import { StorageService } from 'src/storage/storageService';
 import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { UserService } from 'src/user/user.service';
 
 @Injectable()
 export class FlagshipService {
@@ -35,6 +36,7 @@ export class FlagshipService {
     @InjectModel('Payment')
     private readonly paymentModel: Model<Payment>,
     private readonly notificationService: NotificationService,
+    private readonly userService: UserService,
   ) { }
 
   async create(createFlagshipDto: CreateFlagshipDto): Promise<Flagship> {
@@ -685,6 +687,12 @@ export class FlagshipService {
       );
     } catch (error) {
       console.log('Failed to send verification status notification:', error);
+    }
+
+    try {
+      await this.userService.awardVerificationReferralCredits(user._id.toString());
+    } catch (error) {
+      console.log('Failed to award verification referral credits:', error);
     }
 
     return savedUser;

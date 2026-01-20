@@ -1,0 +1,26 @@
+<p>Dear {{fullName}},</p>
+</br>
+<p>We’ve received your refund request for <strong>{{tripName}}</strong>.</p>
+</br>
+<p><strong>Estimated refund (based on policy):</strong></p>
+<ul>
+  <li><strong>Amount paid:</strong> PKR {{amountPaid}}</li>
+  <li><strong>Refund percent:</strong> {{refundPercent}}%</li>
+  <li><strong>Processing fee:</strong> PKR {{processingFee}}</li>
+  <li><strong>Estimated refund:</strong> PKR {{refundAmount}}</li>
+</ul>
+</br>
+<p>
+  <a href="{{refundPolicyLink}}">View refund policy</a>
+</p>
+{{#if refundUrl}}
+  </br>
+  <p>You can review your refund request here:</p>
+  <p><a href="{{refundUrl}}">{{refundUrl}}</a></p>
+{{/if}}
+</br>
+<p>Our team will review your request and update you once it’s processed.</p>
+</br>
+<p>Best regards,</p>
+<p>The 3Musafir Team</p>
+

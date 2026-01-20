@@ -8,6 +8,7 @@ import { UserSchema } from '../user/schemas/user.schema';
 import { FlagshipSchema } from '../flagship/schemas/flagship.schema';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from 'src/storage/storageService';
+import { NotificationModule } from 'src/notifications/notification.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { StorageService } from 'src/storage/storageService';
       { name: 'Flagship', schema: FlagshipSchema },
     ]),
     MailModule,
+    NotificationModule,
   ],
   controllers: [RegistrationController],
   providers: [RegistrationService, StorageService, ConfigService],

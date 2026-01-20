@@ -24,6 +24,7 @@ export const RegistrationSchema = new Schema(
     tripType: { type: String, required: false },
     price: { type: Number, required: false },
     amountDue: { type: Number, required: false },
+    walletPaid: { type: Number, required: false, default: 0 },
     discountApplied: { type: Number, required: false, default: 0 },
     status: { type: String, required: false, default: "pending" },
     ratingId: { type: Schema.Types.ObjectId, ref: 'Rating', required: false, default: null },
