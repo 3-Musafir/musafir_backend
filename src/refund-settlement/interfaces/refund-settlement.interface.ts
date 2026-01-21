@@ -4,7 +4,7 @@ export interface RefundSettlement extends Document {
   refundId: Types.ObjectId;
   userId: Types.ObjectId;
   amount: number;
-  method: 'wallet_credit';
+  method: 'wallet_credit' | 'bank_refund';
   status: 'pending' | 'posted' | 'void';
   postedBy?: Types.ObjectId;
   postedAt?: Date;
@@ -12,4 +12,3 @@ export interface RefundSettlement extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-

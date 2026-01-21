@@ -153,6 +153,15 @@ export class PaymentController {
     return this.paymentService.postRefundCredit(id, admin);
   }
 
+  @Patch('post-refund-bank/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Post bank payout for an approved refund' })
+  @ApiOkResponse({})
+  @Roles('admin')
+  postRefundBank(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.postRefundBank(id, admin);
+  }
+
   @Patch('reject-refund/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject Refund' })

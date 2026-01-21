@@ -19,14 +19,18 @@ export class RefundSettlementService {
     private readonly walletService: WalletService,
   ) {}
 
-  endOfNextCalendarYearPKT(from: Date = new Date()) {
-    return dayjs(from).tz(PK_TIMEZONE).add(1, 'year').endOf('year').toDate();
+  refundCreditExpiryPKT(from: Date = new Date()) {
+    const base = dayjs(from).tz(PK_TIMEZONE);
+    const nextYearStart = base.add(1, 'year').startOf('year');
+    const twelveMonths = base.add(12, 'month');
+    return (nextYearStart.isBefore(twelveMonths) ? nextYearStart : twelveMonths).toDate();
   }
 
   async ensureSettlement(params: {
     refundId: string;
     userId: string;
     amount: number;
+    method?: 'wallet_credit' | 'bank_refund';
     status: 'pending' | 'posted';
     postedBy?: string;
     postedAt?: Date;
@@ -34,11 +38,12 @@ export class RefundSettlementService {
   }) {
     const amount = Math.max(0, Math.floor(Number(params.amount) || 0));
     const refundObjectId = new mongoose.Types.ObjectId(params.refundId);
+    const method = params.method || 'wallet_credit';
 
     const update: any = {
       userId: params.userId,
       amount,
-      method: 'wallet_credit',
+      method,
       status: params.status,
       metadata: params.metadata,
     };
@@ -47,7 +52,7 @@ export class RefundSettlementService {
 
     const settlement = await this.settlementModel
       .findOneAndUpdate(
-        { refundId: refundObjectId, method: 'wallet_credit' },
+        { refundId: refundObjectId, method },
         { $setOnInsert: { refundId: refundObjectId }, $set: update },
         { upsert: true, new: true },
       )
@@ -66,7 +71,7 @@ export class RefundSettlementService {
       });
     }
 
-    const expiresAt = this.endOfNextCalendarYearPKT();
+    const expiresAt = this.refundCreditExpiryPKT();
     await this.walletService.credit({
       userId: params.userId,
       amount,

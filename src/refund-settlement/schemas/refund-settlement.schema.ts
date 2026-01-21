@@ -8,7 +8,7 @@ export const RefundSettlementSchema = new Schema(
     method: {
       type: String,
       required: true,
-      enum: ['wallet_credit'],
+      enum: ['wallet_credit', 'bank_refund'],
       default: 'wallet_credit',
     },
     status: {
@@ -28,4 +28,3 @@ export const RefundSettlementSchema = new Schema(
 RefundSettlementSchema.index({ refundId: 1, method: 1 }, { unique: true });
 RefundSettlementSchema.index({ status: 1, createdAt: -1 });
 RefundSettlementSchema.index({ userId: 1, createdAt: -1 });
-

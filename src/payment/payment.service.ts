@@ -75,6 +75,84 @@ export class PaymentService {
     });
   }
 
+  private pickRefundSettlement(settlements?: any[]): any | null {
+    if (!Array.isArray(settlements) || settlements.length === 0) return null;
+    const score = (settlement: any) => {
+      if (settlement?.status === 'posted') return 2;
+      if (settlement?.status === 'pending') return 1;
+      return 0;
+    };
+    const timestamp = (settlement: any) => {
+      const value = (settlement?.postedAt || settlement?.updatedAt || settlement?.createdAt);
+      const date = value ? new Date(value) : null;
+      return date?.getTime?.() || 0;
+    };
+    return settlements
+      .slice()
+      .sort((a, b) => {
+        const scoreDiff = score(b) - score(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return timestamp(b) - timestamp(a);
+      })[0] || null;
+  }
+
+  private async finalizeRegistrationRefund(registration: any, userId?: string) {
+    if (!registration?._id) return;
+    await this.registrationModel.findByIdAndUpdate(registration._id, {
+      status: 'refunded',
+      amountDue: 0,
+      isPaid: false,
+    });
+    if (userId) {
+      await this.updateUserTripStats(String(userId));
+    }
+  }
+
+  private async ensureRefundSnapshot(refundDoc: any, registration?: any, flagship?: any) {
+    if (typeof refundDoc?.refundAmount === 'number') {
+      return { refundAmount: refundDoc.refundAmount, updated: false };
+    }
+
+    const registrationId = registration?._id;
+    if (!registrationId || !flagship?.startDate) {
+      return { refundAmount: 0, updated: false };
+    }
+
+    const agg = await this.paymentModel
+      .aggregate([
+        {
+          $match: {
+            registration: new mongoose.Types.ObjectId(registrationId),
+            status: 'approved',
+          },
+        },
+        { $group: { _id: null, amountPaid: { $sum: '$amount' } } },
+      ])
+      .exec();
+    const paidFromPayments = Math.max(0, Math.floor(Number(agg?.[0]?.amountPaid) || 0));
+    const walletPaid = typeof registration?.walletPaid === 'number' ? registration.walletPaid : 0;
+    const amountPaid = paidFromPayments + Math.max(0, Math.floor(Number(walletPaid) || 0));
+
+    const quote = computeRefundQuote({
+      flagshipStartDate: new Date(flagship.startDate),
+      submittedAt: refundDoc?.policyAppliedAt || refundDoc?.createdAt || new Date(),
+      amountPaid,
+    });
+
+    if (quote) {
+      refundDoc.amountPaid = quote.amountPaid;
+      refundDoc.refundPercent = quote.refundPercent;
+      refundDoc.processingFee = quote.processingFee;
+      refundDoc.refundAmount = quote.refundAmount;
+      refundDoc.tierLabel = quote.tierLabel;
+      refundDoc.policyLink = quote.policyLink;
+      refundDoc.policyAppliedAt = quote.policyAppliedAt;
+      return { refundAmount: quote.refundAmount, updated: true };
+    }
+
+    return { refundAmount: 0, updated: false };
+  }
+
   async getBankAccounts(): Promise<BankAccount[]> {
     return this.bankAccountModel.find();
   }
@@ -105,12 +183,18 @@ export class PaymentService {
         .map((r) => r?._id?.toString?.() || String(r?._id))
         .filter(Boolean) as string[];
       const settlements = await this.refundSettlementService.findByRefundIds(refundIds);
-      const settlementByRefundId = new Map(
-        settlements.map((s: any) => [s?.refundId?.toString?.() || String(s.refundId), s]),
-      );
+      const settlementByRefundId = new Map<string, any[]>();
+      settlements.forEach((settlement: any) => {
+        const key = settlement?.refundId?.toString?.() || String(settlement?.refundId);
+        if (!key) return;
+        if (!settlementByRefundId.has(key)) {
+          settlementByRefundId.set(key, []);
+        }
+        settlementByRefundId.get(key)?.push(settlement);
+      });
       return refunds.map((r) => ({
         ...r,
-        settlement: settlementByRefundId.get(String(r._id)) || null,
+        settlement: this.pickRefundSettlement(settlementByRefundId.get(String(r._id))) || null,
       })) as any[];
     };
 
@@ -556,10 +640,10 @@ export class PaymentService {
 
     const refundId =
       refund?._id?.toString?.() || (refund?._id ? String(refund._id) : null);
-    const settlement = refundId
-      ? (await this.refundSettlementService.findByRefundIds([refundId]))?.[0] ||
-        null
-      : null;
+    const settlements = refundId
+      ? await this.refundSettlementService.findByRefundIds([refundId])
+      : [];
+    const settlement = this.pickRefundSettlement(settlements);
 
     let retryAt: string | undefined;
     if (refund?.status === 'rejected' && refund?.updatedAt) {
@@ -1187,73 +1271,68 @@ export class PaymentService {
     if (!refundDoc) {
       throw new BadRequestException('Refund not found');
     }
+    if (refundDoc.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'Rejected refunds cannot be approved.',
+        code: 'refund_already_rejected',
+      });
+    }
+    if (refundDoc.status === 'cleared') {
+      throw new BadRequestException({
+        message: 'Refund is already approved. Use payout actions instead.',
+        code: 'refund_already_approved',
+      });
+    }
+    if (refundDoc.status !== 'pending') {
+      throw new BadRequestException({
+        message: 'Refund is not eligible for approval.',
+        code: 'refund_not_pending',
+      });
+    }
 
     const registration: any = refundDoc?.registration
       ? await this.registrationModel.findById(refundDoc.registration).lean().exec()
       : null;
     const registrationUserId = registration?.userId || registration?.user;
+    if (!registration || !registrationUserId) {
+      throw new BadRequestException({
+        message: 'Refund registration/user not found.',
+        code: 'refund_registration_not_found',
+      });
+    }
 
     const flagshipId = registration?.flagship || registration?.flagshipId;
     const flagship: any = flagshipId
       ? await this.flagshipModel.findById(flagshipId).select('startDate tripName').lean().exec()
       : null;
 
-    // Ensure refund quote snapshot exists (for older refunds).
-    let refundAmount =
-      typeof refundDoc?.refundAmount === 'number'
-        ? refundDoc.refundAmount
-        : undefined;
-    if (typeof refundAmount !== 'number') {
-      const agg = registration?._id
-        ? await this.paymentModel
-          .aggregate([
-            {
-              $match: {
-                registration: new mongoose.Types.ObjectId(registration._id),
-                status: 'approved',
-              },
-            },
-            { $group: { _id: null, amountPaid: { $sum: '$amount' } } },
-          ])
-          .exec()
-        : [];
-      const paidFromPayments = Math.max(0, Math.floor(Number(agg?.[0]?.amountPaid) || 0));
-      const walletPaid = typeof registration?.walletPaid === 'number' ? registration.walletPaid : 0;
-      const amountPaid = paidFromPayments + Math.max(0, Math.floor(Number(walletPaid) || 0));
-
-      const quote = flagship?.startDate
-        ? computeRefundQuote({
-          flagshipStartDate: new Date(flagship.startDate),
-          submittedAt: refundDoc?.policyAppliedAt || refundDoc?.createdAt || new Date(),
-          amountPaid,
-        })
-        : null;
-
-      if (quote) {
-        refundDoc.amountPaid = quote.amountPaid;
-        refundDoc.refundPercent = quote.refundPercent;
-        refundDoc.processingFee = quote.processingFee;
-        refundDoc.refundAmount = quote.refundAmount;
-        refundDoc.tierLabel = quote.tierLabel;
-        refundDoc.policyLink = quote.policyLink;
-        refundDoc.policyAppliedAt = quote.policyAppliedAt;
-        refundAmount = quote.refundAmount;
-      } else {
-        refundAmount = 0;
-      }
+    const existingSettlements = await this.refundSettlementService.findByRefundIds([id]);
+    const existingSettlement = this.pickRefundSettlement(existingSettlements);
+    const desiredMethod = credit ? 'wallet_credit' : 'bank_refund';
+    if (existingSettlement?.method && existingSettlement.method !== desiredMethod) {
+      throw new BadRequestException({
+        message: 'Refund payout method already selected for this refund.',
+        code: 'refund_method_conflict',
+      });
     }
+    if (existingSettlement?.status === 'posted') {
+      throw new BadRequestException({
+        message: 'Refund was already settled.',
+        code: 'refund_already_settled',
+      });
+    }
+    if (existingSettlement?.status === 'pending') {
+      throw new BadRequestException({
+        message: 'Refund payout is already in progress.',
+        code: 'refund_payout_in_progress',
+      });
+    }
+
+    const snapshot = await this.ensureRefundSnapshot(refundDoc, registration, flagship);
+    const refundAmount = Math.max(0, Math.floor(Number(snapshot.refundAmount) || 0));
 
     refundDoc.status = 'cleared';
     const savedRefund: any = await refundDoc.save();
-
-    if (registration?._id) {
-      await this.registrationModel.findByIdAndUpdate(registration._id, {
-        status: 'refunded',
-        amountDue: 0,
-        isPaid: false,
-      });
-      await this.updateUserTripStats(String(registrationUserId));
-    }
 
     const userId = registrationUserId ? String(registrationUserId) : undefined;
     if (userId) {
@@ -1261,57 +1340,76 @@ export class PaymentService {
         await this.refundSettlementService.ensureSettlement({
           refundId: id,
           userId,
-          amount: refundAmount || 0,
+          amount: refundAmount,
+          method: 'wallet_credit',
           status: 'pending',
           metadata: { mode: 'approve_and_credit' },
         });
 
-        if ((refundAmount || 0) > 0) {
-          await this.refundSettlementService.postToWallet({
-            refundId: id,
-            userId,
-            amount: refundAmount || 0,
-            postedBy: adminId,
-          });
+        if (refundAmount > 0) {
+          try {
+            await this.refundSettlementService.postToWallet({
+              refundId: id,
+              userId,
+              amount: refundAmount,
+              postedBy: adminId,
+            });
+          } catch (error) {
+            console.log('Failed to post refund credit:', error);
+            throw new BadRequestException({
+              message: 'Refund approved, but wallet credit failed. Retry posting credit.',
+              code: 'refund_credit_failed',
+            });
+          }
         }
 
         await this.refundSettlementService.ensureSettlement({
           refundId: id,
           userId,
-          amount: refundAmount || 0,
+          amount: refundAmount,
+          method: 'wallet_credit',
           status: 'posted',
           postedBy: adminId,
           postedAt: new Date(),
           metadata: { mode: 'approve_and_credit' },
         });
+        await this.finalizeRegistrationRefund(registration, registrationUserId);
       } else {
         await this.refundSettlementService.ensureSettlement({
           refundId: id,
           userId,
-          amount: refundAmount || 0,
+          amount: refundAmount,
+          method: 'bank_refund',
           status: 'pending',
           postedBy: adminId,
-          metadata: { mode: 'approve_defer_credit' },
+          metadata: {
+            mode: 'approve_defer_credit',
+            bankDetails: refundDoc?.bankDetails || undefined,
+          },
         });
       }
 
       try {
         const tripName = flagship?.tripName || 'your trip';
+        const registrationId = registration?._id?.toString();
+        const statusLink = registrationId ? `/musafir/refund/${registrationId}` : '/passport';
+        const hasAmount = refundAmount > 0;
 
         await this.notificationService.createForUser(userId, {
           title: 'Refund approved',
           message: credit
-            ? `Your refund for ${tripName} was approved and credited to your wallet (Rs.${Number(
-              refundAmount || 0,
-            ).toLocaleString()}).`
-            : `Your refund for ${tripName} was approved. Wallet credit is pending.`,
+            ? hasAmount
+              ? `Your refund for ${tripName} was approved and credited to your wallet (Rs.${refundAmount.toLocaleString()}).`
+              : `Your refund for ${tripName} was approved. No refund is due based on policy.`
+            : `Your refund for ${tripName} was approved. Bank transfer is pending.`,
           type: 'refund',
-          link: credit ? '/wallet' : '/passport',
+          link: credit ? '/wallet' : statusLink,
           metadata: {
             refundId: savedRefund._id?.toString(),
             registrationId: registration?._id?.toString(),
-            amount: refundAmount || 0,
-            credited: credit,
+            amount: refundAmount,
+            credited: credit && hasAmount,
+            method: credit ? 'wallet_credit' : 'bank_refund',
           },
         });
 
@@ -1322,7 +1420,7 @@ export class PaymentService {
           .exec();
 
         if (userDoc?.email) {
-          if (credit) {
+          if (credit && hasAmount) {
             await this.mailService.sendMail(
               userDoc.email,
               'Your 3Musafir refund has been credited',
@@ -1330,18 +1428,18 @@ export class PaymentService {
               {
                 fullName: userDoc.fullName || 'Musafir',
                 tripName,
-                amount: Number(refundAmount || 0),
+                amount: refundAmount,
               },
             );
-          } else {
+          } else if (!credit) {
             await this.mailService.sendMail(
               userDoc.email,
-              'Your 3Musafir refund is approved (wallet credit pending)',
-              './refund-approved-pending-credit',
+              'Your 3Musafir refund is approved (bank transfer pending)',
+              './refund-approved-pending-bank',
               {
                 fullName: userDoc.fullName || 'Musafir',
                 tripName,
-                amount: Number(refundAmount || 0),
+                amount: refundAmount,
               },
             );
           }
@@ -1367,6 +1465,12 @@ export class PaymentService {
     if (!refundDoc) {
       throw new BadRequestException('Refund not found');
     }
+    if (refundDoc.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'Rejected refunds cannot be credited.',
+        code: 'refund_rejected',
+      });
+    }
     if (refundDoc.status !== 'cleared') {
       throw new BadRequestException({
         message: 'Refund must be approved before posting credit.',
@@ -1385,37 +1489,77 @@ export class PaymentService {
       });
     }
 
-    const amount = Math.max(0, Math.floor(Number(refundDoc.refundAmount) || 0));
-    await this.refundSettlementService.postToWallet({
+    const flagshipId = registration?.flagship || registration?.flagshipId;
+    const flagship: any = flagshipId
+      ? await this.flagshipModel.findById(flagshipId).select('startDate tripName').lean().exec()
+      : null;
+    const snapshot = await this.ensureRefundSnapshot(refundDoc, registration, flagship);
+    if (snapshot.updated) {
+      await refundDoc.save();
+    }
+
+    const settlements = await this.refundSettlementService.findByRefundIds([refundId]);
+    const existingSettlement = this.pickRefundSettlement(settlements);
+    if (existingSettlement?.method && existingSettlement.method !== 'wallet_credit') {
+      throw new BadRequestException({
+        message: 'Refund payout method is not wallet credit.',
+        code: 'refund_method_conflict',
+      });
+    }
+    if (existingSettlement?.status === 'posted') {
+      throw new BadRequestException({
+        message: 'Refund was already credited.',
+        code: 'refund_already_settled',
+      });
+    }
+
+    const amount = Math.max(0, Math.floor(Number(snapshot.refundAmount) || 0));
+    await this.refundSettlementService.ensureSettlement({
       refundId: refundId,
       userId,
       amount,
+      method: 'wallet_credit',
+      status: 'pending',
       postedBy: adminId,
+      metadata: { mode: 'post_credit' },
     });
+
+    if (amount > 0) {
+      await this.refundSettlementService.postToWallet({
+        refundId: refundId,
+        userId,
+        amount,
+        postedBy: adminId,
+      });
+    }
 
     await this.refundSettlementService.ensureSettlement({
       refundId: refundId,
       userId,
       amount,
+      method: 'wallet_credit',
       status: 'posted',
       postedBy: adminId,
       postedAt: new Date(),
       metadata: { mode: 'post_credit' },
     });
 
+    await this.finalizeRegistrationRefund(registration, userId);
+
     try {
-      const flagshipId = registration?.flagship || registration?.flagshipId;
-      const flagship: any = flagshipId
-        ? await this.flagshipModel.findById(flagshipId).select('tripName').lean().exec()
-        : null;
       const tripName = flagship?.tripName || 'your trip';
+      const hasAmount = amount > 0;
+      const registrationId = registration?._id?.toString?.();
+      const statusLink = registrationId ? `/musafir/refund/${registrationId}` : '/passport';
 
       await this.notificationService.createForUser(userId, {
-        title: 'Refund credited',
-        message: `Rs.${amount.toLocaleString()} has been credited to your wallet.`,
+        title: hasAmount ? 'Refund credited' : 'Refund settled',
+        message: hasAmount
+          ? `Rs.${amount.toLocaleString()} has been credited to your wallet.`
+          : `Your refund for ${tripName} has been settled.`,
         type: 'refund',
-        link: '/wallet',
-        metadata: { refundId: refundId, amount },
+        link: hasAmount ? '/wallet' : statusLink,
+        metadata: { refundId: refundId, amount, method: 'wallet_credit' },
       });
 
       const userDoc: any = await this.user
@@ -1423,7 +1567,7 @@ export class PaymentService {
         .select('email fullName')
         .lean()
         .exec();
-      if (userDoc?.email && amount > 0) {
+      if (userDoc?.email && hasAmount) {
         await this.mailService.sendMail(
           userDoc.email,
           'Your 3Musafir refund has been credited',
@@ -1442,12 +1586,172 @@ export class PaymentService {
     return { status: 'posted', refundId, amount };
   }
 
+  async postRefundBank(refundId: string, admin: User) {
+    const adminId = admin?._id?.toString();
+    if (!adminId) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'refund_admin_auth_required',
+      });
+    }
+
+    const refundDoc: any = await this.refundModel.findById(refundId).exec();
+    if (!refundDoc) {
+      throw new BadRequestException('Refund not found');
+    }
+    if (refundDoc.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'Rejected refunds cannot be processed.',
+        code: 'refund_rejected',
+      });
+    }
+    if (refundDoc.status !== 'cleared') {
+      throw new BadRequestException({
+        message: 'Refund must be approved before posting bank payout.',
+        code: 'refund_not_approved',
+      });
+    }
+
+    const registration: any = refundDoc?.registration
+      ? await this.registrationModel.findById(refundDoc.registration).lean().exec()
+      : null;
+    const userId = (registration?.userId || registration?.user)?.toString?.();
+    if (!userId) {
+      throw new BadRequestException({
+        message: 'Refund registration/user not found.',
+        code: 'refund_registration_not_found',
+      });
+    }
+
+    const flagshipId = registration?.flagship || registration?.flagshipId;
+    const flagship: any = flagshipId
+      ? await this.flagshipModel.findById(flagshipId).select('startDate tripName').lean().exec()
+      : null;
+    const snapshot = await this.ensureRefundSnapshot(refundDoc, registration, flagship);
+    if (snapshot.updated) {
+      await refundDoc.save();
+    }
+
+    const settlements = await this.refundSettlementService.findByRefundIds([refundId]);
+    const existingSettlement = this.pickRefundSettlement(settlements);
+    if (existingSettlement?.method && existingSettlement.method !== 'bank_refund') {
+      throw new BadRequestException({
+        message: 'Refund payout method is not bank transfer.',
+        code: 'refund_method_conflict',
+      });
+    }
+    if (existingSettlement?.status === 'posted') {
+      throw new BadRequestException({
+        message: 'Refund was already settled.',
+        code: 'refund_already_settled',
+      });
+    }
+
+    const amount = Math.max(0, Math.floor(Number(snapshot.refundAmount) || 0));
+    await this.refundSettlementService.ensureSettlement({
+      refundId: refundId,
+      userId,
+      amount,
+      method: 'bank_refund',
+      status: 'pending',
+      postedBy: adminId,
+      metadata: { mode: 'post_bank', bankDetails: refundDoc?.bankDetails || undefined },
+    });
+
+    await this.refundSettlementService.ensureSettlement({
+      refundId: refundId,
+      userId,
+      amount,
+      method: 'bank_refund',
+      status: 'posted',
+      postedBy: adminId,
+      postedAt: new Date(),
+      metadata: { mode: 'post_bank', bankDetails: refundDoc?.bankDetails || undefined },
+    });
+
+    await this.finalizeRegistrationRefund(registration, userId);
+
+    try {
+      const tripName = flagship?.tripName || 'your trip';
+      const registrationId = registration?._id?.toString?.();
+      const statusLink = registrationId ? `/musafir/refund/${registrationId}` : '/passport';
+
+      await this.notificationService.createForUser(userId, {
+        title: 'Refund processed',
+        message: `Your refund for ${tripName} has been processed to your bank details.`,
+        type: 'refund',
+        link: statusLink,
+        metadata: { refundId: refundId, amount, method: 'bank_refund' },
+      });
+
+      const userDoc: any = await this.user
+        .findById(userId)
+        .select('email fullName')
+        .lean()
+        .exec();
+      if (userDoc?.email) {
+        await this.mailService.sendMail(
+          userDoc.email,
+          'Your 3Musafir refund has been processed',
+          './refund-processed-bank',
+          {
+            fullName: userDoc.fullName || 'Musafir',
+            tripName,
+            amount,
+          },
+        );
+      }
+    } catch (error) {
+      console.log('Failed to send refund bank processed notification:', error);
+    }
+
+    return { status: 'posted', refundId, amount };
+  }
+
   async rejectRefund(id: string, admin?: User): Promise<Refund> {
-    const refund = await this.refundModel.findByIdAndUpdate(
-      id,
+    const refundDoc: any = await this.refundModel.findById(id).exec();
+    if (!refundDoc) {
+      throw new BadRequestException('Refund not found');
+    }
+    if (refundDoc.status === 'cleared') {
+      throw new BadRequestException({
+        message: 'Approved refunds cannot be rejected.',
+        code: 'refund_already_approved',
+      });
+    }
+    if (refundDoc.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'Refund is already rejected.',
+        code: 'refund_already_rejected',
+      });
+    }
+
+    const settlements = await this.refundSettlementService.findByRefundIds([id]);
+    const existingSettlement = this.pickRefundSettlement(settlements);
+    if (existingSettlement?.status === 'posted') {
+      throw new BadRequestException({
+        message: 'Refund was already settled.',
+        code: 'refund_already_settled',
+      });
+    }
+    if (existingSettlement?.status === 'pending') {
+      throw new BadRequestException({
+        message: 'Refund payout is already in progress.',
+        code: 'refund_payout_in_progress',
+      });
+    }
+
+    const refund = await this.refundModel.findOneAndUpdate(
+      { _id: id, status: 'pending' },
       { status: 'rejected' },
       { new: true },
     );
+    if (!refund) {
+      throw new BadRequestException({
+        message: 'Refund could not be rejected. Please retry.',
+        code: 'refund_state_changed',
+      });
+    }
 
     if (refund?.registration) {
       const registration = await this.registrationModel
