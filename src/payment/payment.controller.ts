@@ -108,6 +108,15 @@ export class PaymentController {
     return this.paymentService.getRefundQuote(registrationId, user);
   }
 
+  @Get('refund-status/:registrationId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get refund status for a registration' })
+  @ApiOkResponse({})
+  @UseGuards(JwtAuthGuard)
+  refundStatus(@GetUser() user: User, @Param('registrationId') registrationId: string) {
+    return this.paymentService.getRefundStatusForRegistration(registrationId, user);
+  }
+
   @Get('get-refunds')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Refunds' })

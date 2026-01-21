@@ -522,6 +522,63 @@ export class PaymentService {
     });
   }
 
+  async getRefundStatusForRegistration(registrationId: string, requester: User) {
+    if (!requester?._id) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'refund_auth_required',
+      });
+    }
+
+    const registration: any = await this.registrationModel
+      .findById(registrationId)
+      .lean()
+      .exec();
+    if (!registration) {
+      throw new BadRequestException({
+        message: 'Registration not found.',
+        code: 'refund_registration_not_found',
+      });
+    }
+
+    const registrationUserId = registration.userId || registration.user;
+    if (!registrationUserId || String(registrationUserId) !== String(requester._id)) {
+      throw new ForbiddenException(
+        'You can only view refund status for your own registration.',
+      );
+    }
+
+    const refund: any = await this.refundModel
+      .findOne({ registration: registration._id })
+      .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
+      .lean()
+      .exec();
+
+    const refundId =
+      refund?._id?.toString?.() || (refund?._id ? String(refund._id) : null);
+    const settlement = refundId
+      ? (await this.refundSettlementService.findByRefundIds([refundId]))?.[0] ||
+        null
+      : null;
+
+    let retryAt: string | undefined;
+    if (refund?.status === 'rejected' && refund?.updatedAt) {
+      const updatedAt = new Date(refund.updatedAt);
+      const retryAtDate = new Date(updatedAt.getTime() + 24 * 60 * 60 * 1000);
+      retryAt = retryAtDate.toISOString();
+    }
+
+    return {
+      registration: {
+        _id: registration._id?.toString?.() || String(registration._id),
+        status: registration.status,
+      },
+      refund: refund || null,
+      settlement,
+      retryAt,
+    };
+  }
+
   async calculateUserDiscount(userId: string): Promise<number> {
     try {
       // Get all completed registrations for the user
