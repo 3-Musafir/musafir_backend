@@ -2,11 +2,15 @@ import { Schema } from 'mongoose';
 import { Document, Types } from 'mongoose';
 
 export interface Payment extends Document {
-  bankAccount: Types.ObjectId;
+  bankAccount?: Types.ObjectId | null;
+  bankAccountLabel?: string;
   registration: Types.ObjectId;
   paymentType: 'fullPayment' | 'partialPayment';
+  paymentMethod?: 'bank_transfer' | 'wallet_only' | 'wallet_plus_bank';
   amount: number;
   discount?: number;
+  walletRequested?: number;
+  walletApplied?: number;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   createdAt: Date;
@@ -23,18 +27,35 @@ export const PaymentSchema = new Schema<Payment>(
     bankAccount: {
       type: Schema.Types.ObjectId,
       ref: 'BankAccount',
-      required: true,
+      required: false,
+    },
+    bankAccountLabel: {
+      type: String,
+      default: '',
     },
     paymentType: {
       type: String,
       enum: ['fullPayment', 'partialPayment'],
       required: true,
     },
+    paymentMethod: {
+      type: String,
+      enum: ['bank_transfer', 'wallet_only', 'wallet_plus_bank'],
+      default: 'bank_transfer',
+    },
     amount: {
       type: Number,
       required: true,
     },
     discount: {
+      type: Number,
+      default: 0,
+    },
+    walletRequested: {
+      type: Number,
+      default: 0,
+    },
+    walletApplied: {
       type: Number,
       default: 0,
     },

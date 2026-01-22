@@ -31,13 +31,21 @@ export class CreateBankAccountDto {
 export type PaymentType = 'partialPayment' | 'fullPayment';
 
 export class CreatePaymentDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '1234567890',
-    description: 'Bank Account ID',
+    description: 'Bank Account ID (required for bank transfers)',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  bankAccount: string;
+  bankAccount?: string;
+
+  @ApiPropertyOptional({
+    example: 'Faysal Bank (Ahmed Bin Abrar)',
+    description: 'Display label for the selected bank account',
+  })
+  @IsOptional()
+  @IsString()
+  bankAccountLabel?: string;
 
   @ApiProperty({
     example: '1234567890',

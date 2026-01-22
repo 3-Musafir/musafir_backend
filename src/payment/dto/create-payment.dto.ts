@@ -6,8 +6,12 @@ export class CreatePaymentDTO {
     registration: string;
 
     @IsMongoId()
-    @IsNotEmpty()
-    bankAccount: string;
+    @IsOptional()
+    bankAccount?: string;
+
+    @IsOptional()
+    @IsString()
+    bankAccountLabel?: string;
 
     @IsString()
     @IsNotEmpty()

@@ -18,7 +18,7 @@ import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { NotificationService } from 'src/notifications/notification.service';
 import { computeRefundQuote } from './refund-policy.util';
 import { RefundSettlementService } from 'src/refund-settlement/refund-settlement.service';
-import { isWalletTxIdempotent, WalletService } from 'src/wallet/wallet.service';
+import { WalletService } from 'src/wallet/wallet.service';
 
 @Injectable()
 export class PaymentService {
@@ -324,11 +324,14 @@ export class PaymentService {
       .populate('bankAccount')
       .exec();
 
-    if (payment) {
-      const screenshotUrl = await this.storageService.getSignedUrl(
-        payment._id.toString(),
-      );
-      payment.screenshot = screenshotUrl;
+    if (payment && payment.screenshot) {
+      const isUrl = /^https?:\/\//i.test(payment.screenshot);
+      if (!isUrl) {
+        const screenshotUrl = await this.storageService.getSignedUrl(
+          payment.screenshot,
+        );
+        payment.screenshot = screenshotUrl;
+      }
     }
 
     return payment;
@@ -744,37 +747,12 @@ export class PaymentService {
       this.assertUserVerifiedForPayment(registrationUser);
     }
 
-    const originalStatus = String((registration as any)?.status || '');
-    const originalIsPaid =
-      typeof (registration as any)?.isPaid === 'boolean'
-        ? (registration as any).isPaid
-        : false;
-
-    const originalAmountDue =
-      typeof (registration as any)?.amountDue === 'number'
-        ? (registration as any).amountDue
-        : typeof (registration as any)?.price === 'number'
-          ? (registration as any).price
-          : 0;
-    const originalWalletPaid =
-      typeof (registration as any)?.walletPaid === 'number'
-        ? (registration as any).walletPaid
-        : 0;
-    const originalDiscountApplied =
-      typeof (registration as any)?.discountApplied === 'number'
-        ? (registration as any).discountApplied
-        : 0;
-
     let currentAmountDue =
       typeof (registration as any)?.amountDue === 'number'
         ? (registration as any).amountDue
         : typeof (registration as any)?.price === 'number'
           ? (registration as any).price
           : 0;
-    let currentWalletPaid =
-      typeof (registration as any)?.walletPaid === 'number'
-        ? (registration as any).walletPaid
-        : 0;
     let currentDiscountApplied =
       typeof (registration as any)?.discountApplied === 'number'
         ? (registration as any).discountApplied
@@ -793,6 +771,14 @@ export class PaymentService {
     const walletToApply = Math.min(requestedWalletAmount, dueAfterDiscount);
 
     const manualAmount = Math.max(0, Math.floor(Number(createPaymentDto.amount) || 0));
+    const bankAccountId =
+      typeof createPaymentDto.bankAccount === 'string' && createPaymentDto.bankAccount
+        ? createPaymentDto.bankAccount
+        : null;
+    const bankAccountLabel =
+      typeof createPaymentDto.bankAccountLabel === 'string'
+        ? createPaymentDto.bankAccountLabel.trim()
+        : '';
 
     if (walletToApply <= 0 && manualAmount <= 0) {
       throw new BadRequestException({
@@ -800,6 +786,13 @@ export class PaymentService {
           ? 'No payment is due for this registration.'
           : 'Please specify a payment amount or wallet credits to apply.',
         code: currentAmountDue <= 0 ? 'no_payment_due' : 'payment_amount_required',
+      });
+    }
+
+    if (manualAmount > 0 && !bankAccountId && !bankAccountLabel) {
+      throw new BadRequestException({
+        message: 'Bank account selection is required for manual payments.',
+        code: 'bank_account_required',
       });
     }
 
@@ -811,9 +804,6 @@ export class PaymentService {
     }
 
     const requesterId = requester?._id?.toString();
-    const walletUseId = (createPaymentDto as any)?.walletUseId;
-    let walletSourceId: string | null = null;
-    let walletDebited = false;
 
     if (walletToApply > 0) {
       if (!requesterId) {
@@ -822,92 +812,20 @@ export class PaymentService {
           code: 'wallet_auth_required',
         });
       }
-      if (!walletUseId) {
+
+      const balance = await this.walletService.getBalance(requesterId);
+      if (balance.balance < walletToApply) {
         throw new BadRequestException({
-          message: 'walletUseId is required when applying wallet credits.',
-          code: 'wallet_use_id_required',
+          message: 'Insufficient wallet balance.',
+          code: 'wallet_insufficient_balance',
         });
-      }
-
-      walletSourceId = `${createPaymentDto.registration}:${walletUseId}`;
-
-      try {
-        const walletTx: any = await this.walletService.debit({
-          userId: requesterId,
-          amount: walletToApply,
-          type: 'flagship_payment_wallet_debit',
-          sourceId: walletSourceId,
-          sourceType: 'flagship_payment',
-          metadata: {
-            sourceId: walletSourceId,
-            registrationId: createPaymentDto.registration,
-            walletApplied: walletToApply,
-          },
-        });
-        walletDebited = !isWalletTxIdempotent(walletTx);
-
-        if (walletDebited) {
-          const amountDueAfterWallet = Math.max(
-            0,
-            currentAmountDue - discountDelta - walletToApply,
-          );
-          const updated = await this.registrationModel.findByIdAndUpdate(
-            createPaymentDto.registration,
-            {
-              amountDue: amountDueAfterWallet,
-              walletPaid: Math.max(0, originalWalletPaid + walletToApply),
-              discountApplied: Math.max(0, originalDiscountApplied + discountDelta),
-              ...(amountDueAfterWallet === 0
-                ? { status: 'confirmed', isPaid: true }
-                : {}),
-            },
-            { new: true },
-          );
-
-          if (!updated) {
-            throw new BadRequestException({
-              message: 'Failed to apply wallet credits. Please retry.',
-              code: 'wallet_apply_failed',
-            });
-          }
-
-          currentAmountDue = amountDueAfterWallet;
-          currentWalletPaid = Math.max(0, originalWalletPaid + walletToApply);
-          currentDiscountApplied = Math.max(0, originalDiscountApplied + discountDelta);
-        }
-      } catch (err: any) {
-        if (walletDebited && walletSourceId) {
-          try {
-            await this.walletService.voidBySource({
-              type: 'flagship_payment_wallet_debit',
-              sourceId: walletSourceId,
-              voidedBy: requesterId,
-              note: 'Rolled back wallet debit due to payment failure',
-            });
-          } catch (e) {
-            console.log('Failed to rollback wallet debit:', e);
-          }
-
-          try {
-            await this.registrationModel.findByIdAndUpdate(createPaymentDto.registration, {
-              amountDue: originalAmountDue,
-              walletPaid: originalWalletPaid,
-              discountApplied: originalDiscountApplied,
-              status: originalStatus,
-              isPaid: originalIsPaid,
-            });
-          } catch (e) {
-            console.log('Failed to rollback registration after wallet debit:', e);
-          }
-        }
-        throw err;
       }
     }
 
-    const remainingDueForManualPayment =
-      walletToApply > 0
-        ? currentAmountDue
-        : Math.max(0, currentAmountDue - discountDelta);
+    const remainingDueForManualPayment = Math.max(
+      0,
+      dueAfterDiscount - walletToApply,
+    );
 
     if (manualAmount > remainingDueForManualPayment) {
       throw new BadRequestException({
@@ -916,27 +834,46 @@ export class PaymentService {
       });
     }
 
-    if (currentAmountDue <= 0 && manualAmount <= 0) {
-      return {
-        statusCode: 200,
-        message: 'Wallet payment applied.',
-        data: {
-          registrationId: createPaymentDto.registration,
-          walletApplied: walletToApply,
-          amountDue: currentAmountDue,
-        },
-      };
-    }
+    const paymentMethod =
+      walletToApply > 0 && manualAmount > 0
+        ? 'wallet_plus_bank'
+        : walletToApply > 0
+          ? 'wallet_only'
+          : 'bank_transfer';
 
     if (manualAmount <= 0) {
       if (walletToApply > 0) {
+        const paymentData = {
+          ...createPaymentDto,
+          bankAccount: undefined,
+          bankAccountLabel: bankAccountLabel || undefined,
+          paymentMethod,
+          walletRequested: walletToApply,
+          walletApplied: 0,
+          amount: 0,
+          status: 'pendingApproval',
+        };
+
+        const payment = new this.paymentModel(paymentData);
+        const savedPayment = await payment.save();
+
+        await this.registrationModel.findByIdAndUpdate(
+          createPaymentDto.registration,
+          {
+            paymentId: savedPayment._id,
+            payment: savedPayment._id,
+          },
+        );
+
         return {
           statusCode: 200,
-          message: 'Wallet payment applied.',
+          message: 'Payment submitted for approval.',
           data: {
             registrationId: createPaymentDto.registration,
-            walletApplied: walletToApply,
+            paymentId: savedPayment._id,
+            walletRequested: walletToApply,
             amountDue: currentAmountDue,
+            pendingApproval: true,
           },
         };
       }
@@ -952,7 +889,12 @@ export class PaymentService {
     // Create payment with discount
     const paymentData = {
       ...createPaymentDto,
-      discount: discount
+      bankAccount: bankAccountId || undefined,
+      bankAccountLabel: bankAccountLabel || undefined,
+      paymentMethod,
+      walletRequested: walletToApply,
+      walletApplied: 0,
+      discount: discount,
     };
 
     let savedPayment: any = null;
@@ -979,7 +921,7 @@ export class PaymentService {
               createPaymentDto.registration,
               {
                 paymentId: savedPayment._id,
-                isPaid: true,
+                payment: savedPayment._id,
               },
             );
           }
@@ -996,31 +938,6 @@ export class PaymentService {
         }
       }
 
-      if (walletDebited && walletSourceId) {
-        try {
-          await this.walletService.voidBySource({
-            type: 'flagship_payment_wallet_debit',
-            sourceId: walletSourceId,
-            voidedBy: requesterId,
-            note: 'Rolled back wallet debit due to manual payment failure',
-          });
-        } catch (e) {
-          console.log('Failed to rollback wallet debit after payment error:', e);
-        }
-
-        try {
-          await this.registrationModel.findByIdAndUpdate(createPaymentDto.registration, {
-            amountDue: originalAmountDue,
-            walletPaid: originalWalletPaid,
-            discountApplied: originalDiscountApplied,
-            status: originalStatus,
-            isPaid: originalIsPaid,
-          });
-        } catch (e) {
-          console.log('Failed to rollback registration after payment error:', e);
-        }
-      }
-
       throw err;
     }
   }
@@ -1030,22 +947,30 @@ export class PaymentService {
     if (!payment) {
       throw new BadRequestException('Payment not found');
     }
+    if (payment.status === 'approved') {
+      return payment;
+    }
+    if (payment.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'Rejected payments cannot be approved.',
+        code: 'payment_rejected',
+      });
+    }
 
     let registration: any = null;
     let remainingDue: number | null = null;
+    let registrationUserId: string | null = null;
     if (payment.registration) {
       registration = await this.registrationModel.findById(payment.registration);
-      const registrationUserId = registration?.userId || registration?.user;
-      if (registrationUserId) {
-        const registrationUser = await this.user.findById(registrationUserId);
+      const regUserId = registration?.userId || registration?.user;
+      if (regUserId) {
+        registrationUserId = regUserId.toString();
+        const registrationUser = await this.user.findById(regUserId);
         if (registrationUser) {
           this.assertUserVerifiedForPayment(registrationUser);
         }
       }
     }
-
-    payment.status = 'approved';
-    await payment.save();
 
     if (registration) {
       const currentAmountDue =
@@ -1058,6 +983,10 @@ export class PaymentService {
         typeof registration.discountApplied === 'number'
           ? registration.discountApplied
           : 0;
+      const currentWalletPaid =
+        typeof registration.walletPaid === 'number'
+          ? registration.walletPaid
+          : 0;
       const paymentDiscount =
         typeof (payment as any)?.discount === 'number'
           ? (payment as any).discount
@@ -1065,22 +994,95 @@ export class PaymentService {
       const targetDiscount = Math.max(0, paymentDiscount);
       const discountDelta = Math.max(0, targetDiscount - currentDiscountApplied);
 
-      const updatedDiscountApplied = currentDiscountApplied + discountDelta;
-      const newAmountDue = Math.max(
-        0,
-        currentAmountDue - payment.amount - discountDelta,
-      );
-      remainingDue = newAmountDue;
+      const paymentWalletRequested =
+        typeof (payment as any)?.walletRequested === 'number'
+          ? (payment as any).walletRequested
+          : 0;
+      const paymentWalletApplied =
+        typeof (payment as any)?.walletApplied === 'number'
+          ? (payment as any).walletApplied
+          : 0;
+      const walletToApply =
+        paymentWalletRequested > 0 && paymentWalletApplied < paymentWalletRequested
+          ? paymentWalletRequested
+          : 0;
 
-      await this.registrationModel.findByIdAndUpdate(payment.registration, {
-        isPaid: true,
-        amountDue: newAmountDue,
-        discountApplied: updatedDiscountApplied,
-        status: 'confirmed',
-        payment: payment._id,
-        paymentId: payment._id,
-      });
+      let walletDebited = false;
+      let walletSourceId: string | null = null;
+
+      try {
+        if (walletToApply > 0) {
+          if (!registrationUserId) {
+            throw new BadRequestException({
+              message: 'User not found for wallet debit.',
+              code: 'wallet_user_missing',
+            });
+          }
+          walletSourceId = `payment:${payment._id.toString()}`;
+          await this.walletService.debit({
+            userId: registrationUserId,
+            amount: walletToApply,
+            type: 'flagship_payment_wallet_debit',
+            sourceId: walletSourceId,
+            sourceType: 'flagship_payment',
+            metadata: {
+              paymentId: payment._id?.toString(),
+              registrationId: registration._id?.toString(),
+              walletApplied: walletToApply,
+            },
+          });
+          walletDebited = true;
+        }
+
+        const updatedDiscountApplied = currentDiscountApplied + discountDelta;
+        const newAmountDue = Math.max(
+          0,
+          currentAmountDue - payment.amount - discountDelta - walletToApply,
+        );
+        remainingDue = newAmountDue;
+
+        const registrationUpdate: any = {
+          isPaid: true,
+          amountDue: newAmountDue,
+          discountApplied: updatedDiscountApplied,
+          status: 'confirmed',
+          payment: payment._id,
+          paymentId: payment._id,
+        };
+        if (walletToApply > 0) {
+          registrationUpdate.walletPaid = Math.max(
+            0,
+            currentWalletPaid + walletToApply,
+          );
+        }
+
+        await this.registrationModel.findByIdAndUpdate(payment.registration, registrationUpdate);
+
+        if (walletToApply > 0) {
+          payment.walletApplied = Math.max(
+            paymentWalletApplied,
+            paymentWalletRequested,
+          );
+        }
+      } catch (err) {
+        if (walletDebited && walletSourceId) {
+          try {
+            await this.walletService.voidBySource({
+              type: 'flagship_payment_wallet_debit',
+              sourceId: walletSourceId,
+              voidedBy: registrationUserId || undefined,
+              note: 'Rolled back wallet debit due to approval failure',
+            });
+          } catch (e) {
+            console.log('Failed to rollback wallet debit after approval error:', e);
+          }
+        }
+        throw err;
+      }
     }
+
+    payment.status = 'approved';
+    await payment.save();
 
     // Send payment approved email if user has an email
     try {
