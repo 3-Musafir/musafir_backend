@@ -16,6 +16,7 @@ import { CreateRegistrationDto } from './dto/create-registration.dto';
 import { GetUser } from 'src/auth/decorators/user.decorator';
 import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @ApiTags('Registration')
 @Controller('registration')
@@ -95,6 +96,53 @@ export class RegistrationController {
         statusCode: 200,
         message: 'Seat cancelled successfully',
         data: await this.registrationService.cancelSeat(registrationId, user),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Post('/waitlist/offer/:registrationId/accept')
+    async acceptWaitlistOffer(
+      @GetUser() user: User,
+      @Param('registrationId') registrationId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Waitlist offer accepted.',
+        data: await this.registrationService.respondWaitlistOffer(
+          registrationId,
+          user,
+          'accepted',
+        ),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Post('/waitlist/offer/:registrationId/decline')
+    async declineWaitlistOffer(
+      @GetUser() user: User,
+      @Param('registrationId') registrationId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Waitlist offer declined.',
+        data: await this.registrationService.respondWaitlistOffer(
+          registrationId,
+          user,
+          'declined',
+        ),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Roles('admin')
+    @Post('/waitlist/process/:flagshipId')
+    async processWaitlist(
+      @Param('flagshipId') flagshipId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Waitlist processed.',
+        data: await this.registrationService.processWaitlistForFlagship(flagshipId),
       };
     }
 } 

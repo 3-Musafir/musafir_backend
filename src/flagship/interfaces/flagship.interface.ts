@@ -37,6 +37,10 @@ export class Flagship {
   readonly totalSeats: number;
   readonly femaleSeats: number;
   readonly maleSeats: number;
+  readonly confirmedFemaleCount?: number;
+  readonly confirmedMaleCount?: number;
+  readonly waitlistedFemaleCount?: number;
+  readonly waitlistedMaleCount?: number;
   readonly citySeats: object;
   readonly bedSeats: number;
   readonly mattressSeats: number;

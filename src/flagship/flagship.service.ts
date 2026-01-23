@@ -387,7 +387,7 @@ export class FlagshipService {
   }
 
   async findPendingVerificationUsers(id: string) {
-    const verificationStatuses = ['pending'];
+    const verificationStatuses = [VerificationStatus.PENDING];
 
     const registrations = await this.registerationModel
       .find({ flagship: id })
@@ -460,6 +460,8 @@ export class FlagshipService {
       throw new NotFoundException(`Flagship with ID ${id} not found`);
     }
 
+    await this.registrationService.processWaitlistForFlagship(id);
+
     // Get all registrations for this flagship
     const registrations = await this.registerationModel
       .find({ flagship: id })
@@ -503,18 +505,17 @@ export class FlagshipService {
       (startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
 
-    const pendingCount = registrations.filter(
-      (reg) => reg.status === 'pending',
-    ).length;
-    const acceptedCount = registrations.filter(
-      (reg) => reg.status === 'confirmed',
-    ).length;
-    const rejectedCount = registrations.filter(
-      (reg) => reg.status === 'rejected',
-    ).length;
-    const paidCount = registrations.filter(
-      (reg) => reg.payment !== null,
-    ).length;
+    const newCount = registrations.filter((reg) => reg.status === 'new').length;
+    const onboardingCount = registrations.filter((reg) => reg.status === 'onboarding').length;
+    const paymentCount = registrations.filter((reg) => reg.status === 'payment').length;
+    const waitlistedCount = registrations.filter((reg) => reg.status === 'waitlisted').length;
+    const confirmedCount = registrations.filter((reg) => reg.status === 'confirmed').length;
+    const cancelledCount = registrations.filter((reg: any) => Boolean((reg as any).cancelledAt)).length;
+    const paidCount = registrations.filter((reg) => reg.payment !== null).length;
+
+    const pendingCount = onboardingCount + newCount;
+    const acceptedCount = confirmedCount;
+    const rejectedCount = waitlistedCount;
 
     // Get city seats
     const citySeats = flagship.citySeats as Record<string, number>;
@@ -580,6 +581,12 @@ export class FlagshipService {
       acceptedCount,
       rejectedCount,
       paidCount,
+      newCount,
+      onboardingCount,
+      paymentCount,
+      waitlistedCount,
+      confirmedCount,
+      cancelledCount,
       teamSeats: flagship.totalSeats || 0,
       lahoreSeats,
       islamabadSeats,
@@ -598,144 +605,36 @@ export class FlagshipService {
   async gePaymentStats(id: string) {}
 
   async approveRegisteration(id: string, comment: string) {
-    const registration: any = await this.registerationModel.findById(id);
-    if (!registration) {
-      throw new NotFoundException(`Registration with ID ${id} not found`);
-    }
-
-    const currentStatus = registration.status;
-    const lockedStatuses = new Set([
-      'confirmed',
-      'completed',
-      'refunded',
-      'refundProcessing',
-    ]);
-    if (!lockedStatuses.has(currentStatus)) {
-      registration.status = 'accepted';
-    }
-
-    registration.comment = comment;
-
-    return registration.save();
+    throw new BadRequestException({
+      message: 'Registration approvals are handled through verification and payment flows.',
+      code: 'registration_approval_deprecated',
+    });
   }
 
   async rejectRegisteration(id: string, comment: string) {
-    const updatedRegistration = await this.registerationModel.findByIdAndUpdate(
-      id,
-      {
-        status: 'rejected',
-        comment: comment,
-      },
-      { new: true },
-    );
-
-    if (!updatedRegistration) {
-      throw new NotFoundException(`Registration with ID ${id} not found`);
-    }
-
-    return updatedRegistration;
+    throw new BadRequestException({
+      message: 'Registration rejection is handled through verification and waitlist flows.',
+      code: 'registration_rejection_deprecated',
+    });
   }
 
   async didntPickRegistration(id: string, comment: string) {
-    const updatedRegistration = await this.registerationModel.findByIdAndUpdate(
-      id,
-      {
-        status: 'didntPick',
-        comment: comment,
-      },
-      { new: true },
-    );
-
-    if (!updatedRegistration) {
-      throw new NotFoundException(`Registration with ID ${id} not found`);
-    }
-
-    return updatedRegistration;
+    throw new BadRequestException({
+      message: 'This action is deprecated in the new registration lifecycle.',
+      code: 'registration_action_deprecated',
+    });
   }
 
   async verifyUser(id: string, comment: string) {
-    const user = await this.userModel.findById(id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    user.verification.status = VerificationStatus.VERIFIED;
-    user.verification.VerificationDate = new Date();
-    user.verification.method = user.verification.method || 'admin';
-    user.markModified('verification');
-    const savedUser = await user.save();
-
-    if (user.email) {
-      try {
-        await this.mailService.sendVerificationApprovedEmail(
-          user.email,
-          user.fullName || 'Musafir',
-        );
-      } catch (error) {
-        console.log('Failed to send verification approved email:', error);
-      }
-    }
-
-    try {
-      await this.notificationService.ensureVerificationStatusNotification(
-        user._id.toString(),
-        VerificationStatus.VERIFIED,
-        {
-          comment,
-          metadata: { source: 'admin_override' },
-        },
-      );
-    } catch (error) {
-      console.log('Failed to send verification status notification:', error);
-    }
-
-    try {
-      await this.userService.awardVerificationReferralCredits(user._id.toString());
-    } catch (error) {
-      console.log('Failed to award verification referral credits:', error);
-    }
-
-    return savedUser;
+    return this.userService.updateVerificationStatus(
+      id,
+      VerificationStatus.VERIFIED,
+      comment,
+    );
   }
 
   async rejectVerification(id: string, comment: string) {
-    const user = await this.userModel.findById(id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    user.verification.status = VerificationStatus.REJECTED;
-    user.verification.VerificationDate = undefined;
-    user.verification.RequestCall = false;
-    user.verification.method = user.verification.method || 'admin';
-    user.markModified('verification');
-    const savedUser = await user.save();
-
-    if (user.email) {
-      try {
-        await this.mailService.sendVerificationRejectedEmail(
-          user.email,
-          user.fullName || 'Musafir',
-        );
-      } catch (error) {
-        console.log('Failed to send verification rejected email:', error);
-      }
-    }
-
-    try {
-      await this.notificationService.ensureVerificationStatusNotification(
-        user._id.toString(),
-        VerificationStatus.REJECTED,
-        {
-          comment,
-          metadata: { source: 'admin_override' },
-        },
-      );
-    } catch (error) {
-      console.log('Failed to send verification status notification:', error);
-    }
-
-    return savedUser;
+    return this.userService.rejectUser(id, comment);
   }
 
   async getPastTrips() {

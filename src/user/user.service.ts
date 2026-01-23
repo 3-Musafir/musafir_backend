@@ -135,6 +135,42 @@ export class UserService {
     }
   }
 
+  private appendVerificationHistory(
+    user: UserDocument,
+    entry: {
+      status?: string;
+      method?: string;
+      reason?: string;
+      source?: string;
+      flagshipId?: string;
+    },
+  ) {
+    if (!user.verification) {
+      (user as any).verification = {
+        status: VerificationStatus.UNVERIFIED,
+        RequestCall: false,
+      };
+    }
+    const history = Array.isArray((user as any).verification?.history)
+      ? (user as any).verification.history
+      : [];
+    history.push({
+      ...entry,
+      createdAt: new Date(),
+    });
+    (user as any).verification.history = history;
+  }
+
+  private async promoteUserRegistrationsToPayment(userId: string) {
+    await this.registrationModel.updateMany(
+      {
+        userId,
+        status: { $in: ['new', 'onboarding'] },
+      },
+      { $set: { status: 'payment' } },
+    );
+  }
+
   async awardVerificationReferralCredits(userId: string) {
     const user = await this.userModel.findById(userId).exec();
     if (!user) return;
@@ -592,6 +628,7 @@ export class UserService {
     const saved = await this.setUserVerified(applicantId, verifyUser, {
       method: 'referral',
       flagshipId: verifyUser.flagshipId,
+      source: 'referral',
     });
 
     // Notify referrers their code was used successfully
@@ -707,7 +744,7 @@ export class UserService {
   async setUserVerified(
     id: string,
     verifyUser: VerifyUserDto,
-    options?: { method?: string; flagshipId?: string },
+    options?: { method?: string; flagshipId?: string; source?: string },
   ) {
     const user = await this.userModel.findById(id);
     if (verifyUser.referral1 && verifyUser.referral2) {
@@ -716,17 +753,23 @@ export class UserService {
         verifyUser.referral2,
       ];
     }
+    const method = options?.method || user?.verification?.method || 'admin';
     user.verification.status = VerificationStatus.VERIFIED;
     user.verification.VerificationDate = new Date();
-    if (options?.method) {
-      user.verification.method = options.method;
-    }
+    user.verification.method = method;
     if (verifyUser.flagshipId || options?.flagshipId) {
       user.verification.flagshipId = options?.flagshipId || verifyUser.flagshipId;
     }
+    this.appendVerificationHistory(user, {
+      status: VerificationStatus.VERIFIED,
+      method,
+      source: options?.source || (method === 'referral' ? 'referral' : 'admin'),
+      flagshipId: user.verification.flagshipId,
+    });
     user.markModified('verification');
     const savedUser = await user.save();
     await this.creditVerificationReferrersIfEligible(savedUser as any);
+    await this.promoteUserRegistrationsToPayment(savedUser._id.toString());
 
     // Send verification approved email if user has an email
     if (user.email) {
@@ -741,11 +784,27 @@ export class UserService {
       }
     }
 
+    try {
+      await this.notificationService.ensureVerificationStatusNotification(
+        savedUser._id.toString(),
+        VerificationStatus.VERIFIED,
+        {
+          metadata: { source: options?.source || 'system' },
+        },
+      );
+    } catch (error) {
+      console.log('Failed to send verification status notification:', error);
+    }
+
     return savedUser;
   }
 
   async requestVerification(id: string, verifyUser: VerifyUserDto) {
     const user = await this.userModel.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const previousStatus = user?.verification?.status;
     let method: string | undefined;
     if (verifyUser.requestCall === 'true') {
       user.verification.RequestCall = true;
@@ -763,11 +822,38 @@ export class UserService {
     if (method) {
       user.verification.method = method;
     }
+    this.appendVerificationHistory(user, {
+      status: VerificationStatus.PENDING,
+      method: method || user?.verification?.method,
+      source: 'user_request',
+      flagshipId: verifyUser.flagshipId,
+    });
     user.markModified('verification');
     const saved = await user.save();
 
     if (verifyUser.requestCall === 'true') {
       await this.notifyCommunityLeadsAboutCall(saved);
+    }
+
+    if (previousStatus === VerificationStatus.REJECTED) {
+      try {
+        const adminUrl =
+          process.env.FRONTEND_URL && saved?._id
+            ? `${process.env.FRONTEND_URL}/admin/user/${saved._id.toString()}`
+            : undefined;
+        await this.mailService.sendAdminVerificationReapplyNotification({
+          userId: saved._id?.toString?.() || '',
+          fullName: saved.fullName || 'Musafir',
+          email: saved.email,
+          phone: saved.phone,
+          method: method || user?.verification?.method,
+          flagshipId: verifyUser.flagshipId,
+          requestedAt: saved.verification?.VerificationRequestDate || new Date(),
+          adminUrl,
+        });
+      } catch (error) {
+        console.log('Failed to send admin verification reapply email:', error);
+      }
     }
 
     return saved;
@@ -1059,11 +1145,15 @@ export class UserService {
     return await user.save();
   }
 
-  async approveUser(userId: string) {
-    return this.updateVerificationStatus(userId, VerificationStatus.VERIFIED);
+  async approveUser(userId: string, comment?: string) {
+    return this.updateVerificationStatus(userId, VerificationStatus.VERIFIED, comment);
   }
 
-  async updateVerificationStatus(userId: string, status: VerificationStatus) {
+  async updateVerificationStatus(
+    userId: string,
+    status: VerificationStatus,
+    comment?: string,
+  ) {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -1078,6 +1168,7 @@ export class UserService {
       );
     }
 
+    user.verification.method = user.verification.method || 'admin';
     user.verification.status = status;
     if (status === VerificationStatus.VERIFIED) {
       user.verification.VerificationDate = new Date();
@@ -1085,11 +1176,19 @@ export class UserService {
       user.verification.VerificationDate = undefined;
       user.verification.RequestCall = false;
     }
+    this.appendVerificationHistory(user, {
+      status,
+      method: user?.verification?.method || 'admin',
+      reason: comment,
+      source: 'admin_override',
+      flagshipId: user?.verification?.flagshipId,
+    });
     user.markModified('verification');
 
     const savedUser = await user.save();
     if (status === VerificationStatus.VERIFIED) {
       await this.creditVerificationReferrersIfEligible(savedUser as any);
+      await this.promoteUserRegistrationsToPayment(savedUser._id.toString());
     }
 
     if (status === VerificationStatus.VERIFIED && user.email) {
@@ -1108,6 +1207,7 @@ export class UserService {
         userId,
         status,
         {
+          comment,
           metadata: { source: 'admin_override' },
         },
       );
@@ -1118,7 +1218,7 @@ export class UserService {
     return savedUser;
   }
 
-  async rejectUser(userId: string) {
+  async rejectUser(userId: string, comment?: string) {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -1127,6 +1227,13 @@ export class UserService {
     user.verification.VerificationDate = undefined;
     user.verification.RequestCall = false;
     user.verification.method = user.verification.method || 'admin';
+    this.appendVerificationHistory(user, {
+      status: VerificationStatus.REJECTED,
+      method: user?.verification?.method || 'admin',
+      reason: comment,
+      source: 'admin_override',
+      flagshipId: user?.verification?.flagshipId,
+    });
     user.markModified('verification');
     const savedUser = await user.save();
 
@@ -1135,7 +1242,8 @@ export class UserService {
       try {
         await this.mailService.sendVerificationRejectedEmail(
           user.email,
-          user.fullName || 'Musafir'
+          user.fullName || 'Musafir',
+          comment,
         );
       } catch (error) {
         console.log('Failed to send verification rejected email:', error);
@@ -1148,6 +1256,7 @@ export class UserService {
         userId,
         VerificationStatus.REJECTED,
         {
+          comment,
           metadata: { source: 'admin_override' },
         },
       );
@@ -1190,6 +1299,7 @@ export class UserService {
         throw new NotFoundException('User not found');
       }
 
+      const previousStatus = user?.verification?.status;
       const videoKey = `verification-videos/${userId}/${Date.now()}-${video.originalname}`;
       await this.storageService.uploadFile(
         videoKey,
@@ -1199,7 +1309,38 @@ export class UserService {
       user.verification.videoStorageKey = videoKey;
       user.verification.status = VerificationStatus.PENDING;
       user.verification.method = 'video';
-      return await user.save();
+      user.verification.VerificationRequestDate = new Date();
+      this.appendVerificationHistory(user, {
+        status: VerificationStatus.PENDING,
+        method: 'video',
+        source: 'user_request',
+        flagshipId: user?.verification?.flagshipId,
+      });
+      user.markModified('verification');
+      const saved = await user.save();
+
+      if (previousStatus === VerificationStatus.REJECTED) {
+        try {
+          const adminUrl =
+            process.env.FRONTEND_URL && saved?._id
+              ? `${process.env.FRONTEND_URL}/admin/user/${saved._id.toString()}`
+              : undefined;
+          await this.mailService.sendAdminVerificationReapplyNotification({
+            userId: saved._id?.toString?.() || '',
+            fullName: saved.fullName || 'Musafir',
+            email: saved.email,
+            phone: saved.phone,
+            method: 'video',
+            flagshipId: saved?.verification?.flagshipId,
+            requestedAt: saved.verification?.VerificationRequestDate || new Date(),
+            adminUrl,
+          });
+        } catch (error) {
+          console.log('Failed to send admin verification reapply email:', error);
+        }
+      }
+
+      return saved;
     } catch (error) {
       throw new Error('Failed to upload video: ' + error.message);
     }

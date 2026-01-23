@@ -6,6 +6,7 @@ import { RegistrationService } from './registration.service';
 import { MailModule } from '../mail/mail.module';
 import { UserSchema } from '../user/schemas/user.schema';
 import { FlagshipSchema } from '../flagship/schemas/flagship.schema';
+import { PaymentSchema } from '../payment/schema/payment.schema';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from 'src/storage/storageService';
 import { NotificationModule } from 'src/notifications/notification.module';
@@ -16,6 +17,7 @@ import { NotificationModule } from 'src/notifications/notification.module';
       { name: 'Registration', schema: RegistrationSchema },
       { name: 'User', schema: UserSchema },
       { name: 'Flagship', schema: FlagshipSchema },
+      { name: 'Payment', schema: PaymentSchema },
     ]),
     MailModule,
     NotificationModule,

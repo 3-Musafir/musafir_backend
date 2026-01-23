@@ -1,0 +1,18 @@
+<p>Hi Admin,</p>
+</br>
+<p>A payment has been re-uploaded after a rejection.</p>
+<ul>
+  <li><strong>Payment ID:</strong> {{paymentId}}</li>
+  <li><strong>Registration ID:</strong> {{registrationId}}</li>
+  {{#if flagshipName}}<li><strong>Flagship:</strong> {{flagshipName}}</li>{{/if}}
+  {{#if userName}}<li><strong>User:</strong> {{userName}}</li>{{/if}}
+  {{#if userEmail}}<li><strong>Email:</strong> {{userEmail}}</li>{{/if}}
+  {{#if amount}}<li><strong>Amount:</strong> Rs.{{amount}}</li>{{/if}}
+  {{#if submittedAt}}<li><strong>Submitted At:</strong> {{submittedAt}}</li>{{/if}}
+</ul>
+{{#if adminUrl}}
+<p><a href="{{adminUrl}}">Review this payment</a></p>
+{{/if}}
+</br>
+<p>Best regards,</p>
+<p>3Musafir System</p>

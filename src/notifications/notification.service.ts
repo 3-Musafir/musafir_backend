@@ -169,8 +169,9 @@ export class NotificationService {
       message = 'Your verification request is under review. We’ll notify you once it’s decided.';
     } else if (normalizedStatus === 'rejected') {
       title = 'Verification rejected';
-      message =
-        'Your verification was rejected. Please resubmit your verification details to proceed.';
+      message = options?.comment
+        ? `Your verification was rejected. Reason: ${options.comment}`
+        : 'Your verification was rejected. Please resubmit your verification details to proceed.';
     } else if (normalizedStatus === 'unverified') {
       title = 'Verification required';
       message =

@@ -19,6 +19,7 @@ import { NotificationService } from 'src/notifications/notification.service';
 import { computeRefundQuote } from './refund-policy.util';
 import { RefundSettlementService } from 'src/refund-settlement/refund-settlement.service';
 import { WalletService } from 'src/wallet/wallet.service';
+import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils';
 
 @Injectable()
 export class PaymentService {
@@ -66,13 +67,26 @@ export class PaymentService {
   private async updateUserTripStats(userId: string): Promise<void> {
     const attendedCount = await this.registrationModel.countDocuments({
       userId,
-      status: 'completed',
+      completedAt: { $exists: true },
     });
 
     await this.user.findByIdAndUpdate(userId, {
       numberOfFlagshipsAttended: attendedCount,
       discountApplicable: attendedCount * 500,
     });
+  }
+
+  private async tryLockSeat(flagshipId: string, bucket: 'male' | 'female'): Promise<boolean> {
+    const expr = bucket === 'female'
+      ? { $lt: ['$confirmedFemaleCount', '$femaleSeats'] }
+      : { $lt: ['$confirmedMaleCount', '$maleSeats'] };
+    const update = { $inc: getSeatCounterUpdate(bucket, 'confirmed', 1) };
+    const updated = await this.flagshipModel.findOneAndUpdate(
+      { _id: flagshipId, $expr: expr },
+      update,
+      { new: true },
+    );
+    return Boolean(updated);
   }
 
   private pickRefundSettlement(settlements?: any[]): any | null {
@@ -98,10 +112,21 @@ export class PaymentService {
 
   private async finalizeRegistrationRefund(registration: any, userId?: string) {
     if (!registration?._id) return;
+    const seatLocked = Boolean(registration?.seatLocked);
+    if (seatLocked) {
+      const flagshipId = registration.flagship || registration.flagshipId;
+      if (flagshipId) {
+        const bucket = resolveSeatBucket(registration.userGender || registration?.user?.gender);
+        await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
+          $inc: getSeatCounterUpdate(bucket, 'confirmed', -1),
+        });
+      }
+    }
     await this.registrationModel.findByIdAndUpdate(registration._id, {
-      status: 'refunded',
+      refundStatus: 'refunded',
       amountDue: 0,
       isPaid: false,
+      seatLocked: false,
     });
     if (userId) {
       await this.updateUserTripStats(String(userId));
@@ -372,10 +397,23 @@ export class PaymentService {
     // For backward compatibility, we still allow confirmed seats here,
     // but we don't mutate the registration status until all eligibility checks pass.
     const currentStatus = String((registration as any)?.status || '');
-    if (currentStatus !== 'cancelled' && currentStatus !== 'confirmed') {
+    const refundStatus = String((registration as any)?.refundStatus || 'none');
+    if (currentStatus !== 'confirmed') {
+      throw new BadRequestException({
+        message: 'Only confirmed registrations can request a refund.',
+        code: 'refund_requires_confirmation',
+      });
+    }
+    if (!registration.cancelledAt) {
       throw new BadRequestException({
         message: 'Please cancel your seat first before requesting a refund.',
         code: 'refund_requires_cancellation',
+      });
+    }
+    if (['processing', 'pending', 'refunded'].includes(refundStatus)) {
+      throw new BadRequestException({
+        message: 'A refund request already exists for this registration.',
+        code: 'refund_already_requested',
       });
     }
 
@@ -460,9 +498,9 @@ export class PaymentService {
       {
         _id: registrationId,
         userId: registrationUserId,
-        status: { $in: ['cancelled', 'confirmed'] },
+        status: 'confirmed',
       },
-      { $set: { status: 'refundProcessing' } },
+      { $set: { refundStatus: 'processing' } },
       { new: false },
     );
     if (!previousRegistration) {
@@ -472,7 +510,7 @@ export class PaymentService {
       });
     }
 
-    const previousStatus = String(previousRegistration?.status || 'cancelled');
+    const previousStatus = String(previousRegistration?.refundStatus || 'none');
     let savedRefund: Refund;
     try {
       const refund = new this.refundModel({
@@ -492,9 +530,9 @@ export class PaymentService {
           {
             _id: registrationId,
             userId: registrationUserId,
-            status: 'refundProcessing',
+            refundStatus: 'processing',
           },
-          { $set: { status: previousStatus } },
+          { $set: { refundStatus: previousStatus } },
         );
       } catch (rollbackError) {
         console.log('Failed to rollback registration status after refund save failure:', rollbackError);
@@ -659,6 +697,7 @@ export class PaymentService {
       registration: {
         _id: registration._id?.toString?.() || String(registration._id),
         status: registration.status,
+        refundStatus: (registration as any)?.refundStatus || 'none',
       },
       refund: refund || null,
       settlement,
@@ -671,7 +710,7 @@ export class PaymentService {
       // Get all completed registrations for the user
       const completedRegistrations = await this.registrationModel.find({
         userId: userId,
-        status: 'completed',
+        completedAt: { $exists: true },
       }).exec();
 
       // Calculate discount: 500 per completed trip
@@ -722,13 +761,78 @@ export class PaymentService {
       throw new Error('Registration not found');
     }
 
+    const lastPayment = await this.paymentModel
+      .findOne({ registration: createPaymentDto.registration })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    const isReupload = lastPayment?.status === 'rejected';
+
+    const registrationStatus = String((registration as any)?.status || '');
+    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+      throw new BadRequestException({
+        message: registrationStatus === 'waitlisted'
+          ? 'You are currently waitlisted. You will be notified when a seat opens.'
+          : 'Registration is not eligible for payment yet.',
+        code: 'registration_not_payable',
+      });
+    }
+    if ((registration as any)?.cancelledAt) {
+      throw new BadRequestException({
+        message: 'Cancelled registrations cannot accept payments.',
+        code: 'registration_cancelled',
+      });
+    }
+    const refundStatus = String((registration as any)?.refundStatus || 'none');
+    if (['pending', 'processing', 'refunded'].includes(refundStatus)) {
+      throw new BadRequestException({
+        message: 'Refunded or refunding registrations cannot accept payments.',
+        code: 'registration_refund_locked',
+      });
+    }
+
     const registrationUserId = (registration as any).userId || (registration as any).user;
 
-    const existingPending = await this.paymentModel.exists({
-      registration: createPaymentDto.registration,
-      status: 'pendingApproval',
-    });
-    if (existingPending) {
+    const pendingPayment = await this.paymentModel
+      .findOne({ registration: createPaymentDto.registration, status: 'pendingApproval' })
+      .select('_id')
+      .lean()
+      .exec();
+
+    const now = new Date();
+    const waitlistOfferStatus = String((registration as any)?.waitlistOfferStatus || 'none');
+    const waitlistOfferExpiresAt = (registration as any)?.waitlistOfferExpiresAt;
+    if (
+      waitlistOfferStatus === 'accepted' &&
+      waitlistOfferExpiresAt &&
+      new Date(waitlistOfferExpiresAt) <= now
+    ) {
+      const flagshipId = (registration as any).flagship || (registration as any).flagshipId;
+      if (pendingPayment?._id) {
+        await this.rejectPayment(String(pendingPayment._id), 'waitlist_offer_expired');
+      }
+      await this.registrationModel.findByIdAndUpdate(createPaymentDto.registration, {
+        status: 'waitlisted',
+        waitlistAt: now,
+        waitlistOfferStatus: 'expired',
+        waitlistOfferResponse: 'declined',
+        waitlistOfferSentAt: null,
+        waitlistOfferAcceptedAt: null,
+        waitlistOfferExpiresAt: null,
+      });
+      if (flagshipId) {
+        const bucket = resolveSeatBucket((registration as any)?.userGender);
+        await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
+          $inc: getSeatCounterUpdate(bucket, 'waitlisted', 1),
+        });
+      }
+      throw new BadRequestException({
+        message: 'Your waitlist offer has expired. You have been moved back to the waitlist.',
+        code: 'waitlist_offer_expired',
+      });
+    }
+
+    if (pendingPayment?._id) {
       throw new BadRequestException({
         message: 'A payment for this registration is already pending approval.',
         code: 'payment_pending_approval',
@@ -739,13 +843,43 @@ export class PaymentService {
       throw new ForbiddenException('You can only pay for your own registration.');
     }
 
+    let registrationUser: any = null;
     if (registrationUserId) {
-      const registrationUser = await this.user.findById(registrationUserId);
+      registrationUser = await this.user.findById(registrationUserId);
       if (!registrationUser) {
         throw new BadRequestException('User for registration not found.');
       }
       this.assertUserVerifiedForPayment(registrationUser);
     }
+
+    const notifyAdminOnReupload = async (paymentDoc: any) => {
+      if (!isReupload || !paymentDoc?._id) return;
+      try {
+        const flagshipId = (registration as any).flagship || (registration as any).flagshipId;
+        const flagship = flagshipId
+          ? await this.flagshipModel.findById(flagshipId).select('tripName').lean().exec()
+          : null;
+        const adminUrl =
+          process.env.FRONTEND_URL && paymentDoc?._id
+            ? `${process.env.FRONTEND_URL}/admin/payment/${paymentDoc._id.toString()}`
+            : undefined;
+
+        await this.mailService.sendAdminPaymentReuploadNotification({
+          paymentId: paymentDoc._id.toString(),
+          registrationId: createPaymentDto.registration,
+          flagshipId: flagshipId?.toString?.(),
+          flagshipName: flagship?.tripName,
+          userId: registrationUser?._id?.toString?.() || registrationUserId?.toString?.(),
+          userName: registrationUser?.fullName,
+          userEmail: registrationUser?.email,
+          amount: paymentDoc.amount,
+          submittedAt: paymentDoc.createdAt,
+          adminUrl,
+        });
+      } catch (error) {
+        console.log('Failed to send admin payment reupload email:', error);
+      }
+    };
 
     let currentAmountDue =
       typeof (registration as any)?.amountDue === 'number'
@@ -757,6 +891,12 @@ export class PaymentService {
       typeof (registration as any)?.discountApplied === 'number'
         ? (registration as any).discountApplied
         : 0;
+    if (currentAmountDue <= 0) {
+      throw new BadRequestException({
+        message: 'No payment is due for this registration.',
+        code: 'no_payment_due',
+      });
+    }
 
     const requestedWalletAmount = Math.max(
       0,
@@ -865,6 +1005,8 @@ export class PaymentService {
           },
         );
 
+        await notifyAdminOnReupload(savedPayment);
+
         return {
           statusCode: 200,
           message: 'Payment submitted for approval.',
@@ -928,6 +1070,8 @@ export class PaymentService {
         }
       }
 
+      await notifyAdminOnReupload(savedPayment);
+
       return savedPayment;
     } catch (err) {
       if (savedPayment?._id) {
@@ -960,12 +1104,70 @@ export class PaymentService {
     let registration: any = null;
     let remainingDue: number | null = null;
     let registrationUserId: string | null = null;
+    let registrationUser: any = null;
     if (payment.registration) {
       registration = await this.registrationModel.findById(payment.registration);
+      const registrationStatus = String((registration as any)?.status || '');
+      const cancelledAt = (registration as any)?.cancelledAt;
+      const refundStatus = String((registration as any)?.refundStatus || 'none');
+      if (cancelledAt) {
+        throw new BadRequestException({
+          message: 'Cancelled registrations cannot be approved.',
+          code: 'payment_registration_cancelled',
+        });
+      }
+      if (['pending', 'processing', 'refunded'].includes(refundStatus)) {
+        throw new BadRequestException({
+          message: 'Refunded or refunding registrations cannot be approved.',
+          code: 'payment_registration_refund_locked',
+        });
+      }
+      if (!['payment', 'confirmed'].includes(registrationStatus)) {
+        throw new BadRequestException({
+          message: 'Registration is not eligible for payment approval.',
+          code: 'payment_registration_ineligible',
+        });
+      }
+      const waitlistOfferStatus = String((registration as any)?.waitlistOfferStatus || 'none');
+      const waitlistOfferExpiresAt = (registration as any)?.waitlistOfferExpiresAt;
+      const now = new Date();
+      if (
+        waitlistOfferStatus === 'accepted' &&
+        waitlistOfferExpiresAt &&
+        new Date(waitlistOfferExpiresAt) <= now
+      ) {
+        await this.paymentModel.findByIdAndUpdate(payment._id, {
+          status: 'rejected',
+          rejectionReason: 'waitlist_offer_expired',
+        });
+        await this.registrationModel.findByIdAndUpdate(payment.registration, {
+          status: 'waitlisted',
+          waitlistAt: now,
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+          paymentId: null,
+          payment: null,
+        });
+        const flagshipId = (registration as any)?.flagship || (registration as any)?.flagshipId;
+        if (flagshipId) {
+          const bucket = resolveSeatBucket((registration as any)?.userGender);
+          await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
+            $inc: getSeatCounterUpdate(bucket, 'waitlisted', 1),
+          });
+        }
+        await this.rejectPayment(payment._id.toString(), 'waitlist_offer_expired');
+        throw new BadRequestException({
+          message: 'Waitlist offer expired before payment approval.',
+          code: 'waitlist_offer_expired',
+        });
+      }
       const regUserId = registration?.userId || registration?.user;
       if (regUserId) {
         registrationUserId = regUserId.toString();
-        const registrationUser = await this.user.findById(regUserId);
+        registrationUser = await this.user.findById(regUserId);
         if (registrationUser) {
           this.assertUserVerifiedForPayment(registrationUser);
         }
@@ -979,6 +1181,13 @@ export class PaymentService {
           : typeof registration.price === 'number'
             ? registration.price
             : 0;
+      if (currentAmountDue <= 0) {
+        await this.rejectPayment(payment._id.toString(), 'no_payment_due');
+        throw new BadRequestException({
+          message: 'No payment is due for this registration.',
+          code: 'no_payment_due',
+        });
+      }
       const currentDiscountApplied =
         typeof registration.discountApplied === 'number'
           ? registration.discountApplied
@@ -1041,11 +1250,61 @@ export class PaymentService {
         );
         remainingDue = newAmountDue;
 
+        const seatAlreadyLocked = Boolean(registration?.seatLocked);
+        if (!seatAlreadyLocked) {
+          const flagshipId = registration.flagship || registration.flagshipId;
+          const userGender = registration.userGender || registrationUser?.gender;
+          const bucket = resolveSeatBucket(userGender);
+          const seatLocked = await this.tryLockSeat(String(flagshipId), bucket);
+          if (!seatLocked) {
+            await this.paymentModel.findByIdAndUpdate(payment._id, {
+              status: 'rejected',
+              rejectionReason: 'seats_full',
+            });
+            await this.registrationModel.findByIdAndUpdate(payment.registration, {
+              status: 'waitlisted',
+              waitlistAt: new Date(),
+              waitlistOfferStatus: 'none',
+              waitlistOfferResponse: null,
+              waitlistOfferSentAt: null,
+              waitlistOfferAcceptedAt: null,
+              waitlistOfferExpiresAt: null,
+              paymentId: null,
+              payment: null,
+            });
+            await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
+              $inc: getSeatCounterUpdate(bucket, 'waitlisted', 1),
+            });
+            if (registrationUserId) {
+              try {
+                await this.notificationService.createForUser(registrationUserId, {
+                  title: 'Seats full - moved to waitlist',
+                  message: 'Seats are currently full. You have been moved to the waitlist and will be notified when a seat opens.',
+                  type: 'waitlist',
+                  link: '/passport',
+                  metadata: {
+                    registrationId: registration?._id?.toString?.(),
+                    flagshipId: String(flagshipId),
+                  },
+                });
+              } catch (error) {
+                console.log('Failed to notify user about waitlist move:', error);
+              }
+            }
+            throw new BadRequestException({
+              message: 'Seats are full. User moved to waitlist.',
+              code: 'seats_full_waitlisted',
+            });
+          }
+        }
+
         const registrationUpdate: any = {
           isPaid: true,
           amountDue: newAmountDue,
           discountApplied: updatedDiscountApplied,
           status: 'confirmed',
+          seatLocked: true,
+          seatLockedAt: new Date(),
           payment: payment._id,
           paymentId: payment._id,
         };
@@ -1161,10 +1420,10 @@ export class PaymentService {
     return payment;
   }
 
-  async rejectPayment(id: string): Promise<Payment> {
+  async rejectPayment(id: string, reason?: string): Promise<Payment> {
     const payment = await this.paymentModel.findByIdAndUpdate(
       id,
-      { status: 'rejected' },
+      { status: 'rejected', rejectionReason: reason || undefined },
       { new: true },
     );
 
@@ -1172,6 +1431,7 @@ export class PaymentService {
       await this.registrationModel.findByIdAndUpdate(payment.registration, {
         isPaid: false,
         paymentId: null,
+        payment: null,
       });
 
       // Notify user about rejection (in-app always, email when available).
@@ -1194,19 +1454,33 @@ export class PaymentService {
           const flagshipId = flagship?._id?.toString?.() ?? flagship?.toString?.();
 
           if (userId && tripName) {
+            const rejectionMessage = (() => {
+              if (reason === 'waitlist_offer_expired') {
+                return `Your payment for ${tripName} could not be approved because your waitlist offer expired. You have been returned to the waitlist.`;
+              }
+              if (reason === 'no_payment_due') {
+                return `Your payment for ${tripName} was rejected because no payment is due for this registration.`;
+              }
+              return `Your payment for ${tripName} was rejected. Please resubmit your payment to confirm your seat.`;
+            })();
+            const rejectionLink =
+              reason === 'waitlist_offer_expired' || reason === 'no_payment_due'
+                ? '/passport'
+                : reg?._id
+                  ? `/musafir/payment/${String(reg._id)}`
+                  : '/passport';
             try {
               await this.notificationService.createForUser(userId, {
                 title: 'Payment rejected',
-                message: `Your payment for ${tripName} was rejected. Please resubmit your payment to confirm your seat.`,
+                message: rejectionMessage,
                 type: 'payment',
-                link: reg?._id
-                  ? `/musafir/payment/${String(reg._id)}`
-                  : '/passport',
+                link: rejectionLink,
                 metadata: {
                   paymentId: payment._id?.toString(),
                   registrationId: reg?._id?.toString(),
                   flagshipId,
                   amount: payment.amount,
+                  rejectionReason: reason,
                 },
               });
             } catch (error) {
@@ -1221,7 +1495,7 @@ export class PaymentService {
                 user.fullName || 'Musafir',
                 payment.amount,
                 tripName,
-                // Note: We could add a reason parameter to the rejectPayment method if needed, unclear right now
+                reason,
               );
             } catch (error) {
               console.log('Failed to send payment rejected email:', error);
@@ -1760,10 +2034,9 @@ export class PaymentService {
         .findById(refund.registration)
         .exec();
 
-      // If refund was rejected, keep seat cancelled (do not restore confirmed seat).
-      if (registration?.status === 'refundProcessing') {
+      if (registration?._id) {
         await this.registrationModel.findByIdAndUpdate(registration._id, {
-          status: 'cancelled',
+          refundStatus: 'rejected',
         });
       }
 

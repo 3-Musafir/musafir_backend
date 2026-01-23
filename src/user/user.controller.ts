@@ -328,8 +328,8 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve User' })
   @ApiOkResponse({})
-  approveUser(@Param('id') id: string) {
-    return this.userService.approveUser(id);
+  approveUser(@Param('id') id: string, @Body('comment') comment?: string) {
+    return this.userService.approveUser(id, comment);
   }
 
   @Patch('reject/:id')
@@ -339,8 +339,8 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject User' })
   @ApiOkResponse({})
-  rejectUser(@Param('id') id: string) {
-    return this.userService.rejectUser(id);
+  rejectUser(@Param('id') id: string, @Body('comment') comment?: string) {
+    return this.userService.rejectUser(id, comment);
   }
 
   @Patch('verification-status/:id')
@@ -358,6 +358,7 @@ export class UserController {
       const updatedUser = await this.userService.updateVerificationStatus(
         id,
         body.status,
+        body.comment,
       );
       return successResponse(
         updatedUser,

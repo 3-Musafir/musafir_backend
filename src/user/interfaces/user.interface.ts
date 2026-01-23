@@ -1,6 +1,15 @@
 import { Document, Types } from 'mongoose';
 import { VerificationStatus } from '../../constants/verification-status.enum';
 
+export interface VerificationHistoryEntry {
+  status?: string;
+  method?: string;
+  reason?: string;
+  source?: string;
+  flagshipId?: string;
+  createdAt?: Date;
+}
+
 export interface VerificationSubSchema {
   // Legacy persisted fields (schema casing)
   VerificationID?: string;
@@ -23,6 +32,7 @@ export interface VerificationSubSchema {
   verificationDate?: Date;
   verificationRequestDate?: Date;
   requestCall?: boolean;
+  history?: VerificationHistoryEntry[];
 }
 
 export interface User {

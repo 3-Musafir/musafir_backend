@@ -9,17 +9,21 @@ import { Model } from 'mongoose';
 import { CreateRegistrationDto } from './dto/create-registration.dto';
 import { Registration } from './interfaces/registration.interface';
 import { User } from 'src/user/interfaces/user.interface';
+import { Payment } from 'src/payment/interface/payment.interface';
 import { MailService } from 'src/mail/mail.service';
 import mongoose from 'mongoose';
 import { StorageService } from 'src/storage/storageService';
 import { NotificationService } from 'src/notifications/notification.service';
 import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
+import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 @Injectable()
 export class RegistrationService {
   constructor(
     @InjectModel('Registration') private readonly registrationModel: Model<Registration>,
     @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('Payment') private readonly paymentModel: Model<Payment>,
     @InjectModel('Flagship') private readonly flagshipModel: Model<any>,
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
@@ -29,10 +33,9 @@ export class RegistrationService {
   private async syncCompletedRegistrationsForUser(userId: string): Promise<void> {
     const now = new Date();
 
-    // Registrations are marked "confirmed" when payment is approved.
-    // Once the trip has ended, we treat them as "completed".
+    // Mark confirmed registrations as completed once the trip has ended.
     const confirmedRegs = await this.registrationModel
-      .find({ userId, status: 'confirmed' })
+      .find({ userId, status: 'confirmed', seatLocked: true, completedAt: { $exists: false } })
       .populate('flagship')
       .exec();
 
@@ -46,15 +49,407 @@ export class RegistrationService {
     if (toCompleteIds.length > 0) {
       await this.registrationModel.updateMany(
         { _id: { $in: toCompleteIds } },
-        { $set: { status: 'completed' } },
+        { $set: { completedAt: now } },
       );
     }
   }
 
+
+  private async adjustFlagshipSeatCount(
+    flagshipId: string,
+    bucket: 'male' | 'female',
+    kind: 'confirmed' | 'waitlisted',
+    delta: number,
+  ) {
+    if (!flagshipId || !delta) return;
+    await this.flagshipModel.findByIdAndUpdate(
+      flagshipId,
+      { $inc: getSeatCounterUpdate(bucket, kind, delta) },
+    );
+  }
+
+  private async expireWaitlistOffers(flagshipId: string) {
+    const now = new Date();
+    await this.registrationModel.updateMany(
+      {
+        flagship: flagshipId,
+        status: 'waitlisted',
+        waitlistOfferStatus: 'offered',
+        waitlistOfferExpiresAt: { $lte: now },
+      },
+      {
+        $set: {
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistAt: now,
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+        },
+      },
+    );
+  }
+
+  private async expireWaitlistAcceptances(flagshipId: string) {
+    const now = new Date();
+    const candidates: any[] = await this.registrationModel
+      .find({
+        flagship: flagshipId,
+        status: { $in: ['payment', 'onboarding'] },
+        waitlistOfferStatus: 'accepted',
+        waitlistOfferExpiresAt: { $lte: now },
+      })
+      .select('_id userGender userId user status')
+      .lean()
+      .exec();
+
+    if (!candidates || candidates.length === 0) return;
+
+    const registrationIds = candidates.map((c) => c._id);
+    const pendingPaymentRegs = await this.paymentModel.distinct('registration', {
+      registration: { $in: registrationIds },
+      status: 'pendingApproval',
+    });
+    const pendingSet = new Set((pendingPaymentRegs || []).map((id: any) => String(id)));
+
+    const userIds = Array.from(
+      new Set(
+        candidates
+          .map((c) => c.userId || c.user)
+          .filter(Boolean)
+          .map((id) => String(id)),
+      ),
+    );
+    const users = userIds.length
+      ? await this.userModel
+        .find({ _id: { $in: userIds } })
+        .select('_id verification gender')
+        .lean()
+        .exec()
+      : [];
+    const userById = new Map(users.map((u: any) => [String(u._id), u]));
+
+    const expiredIds: any[] = [];
+    let maleExpired = 0;
+    let femaleExpired = 0;
+
+    for (const candidate of candidates) {
+      const regId = String(candidate._id);
+      if (candidate.status === 'payment' && pendingSet.has(regId)) {
+        continue;
+      }
+
+      if (candidate.status === 'onboarding') {
+        const user = userById.get(String(candidate.userId || candidate.user));
+        const verificationStatus = (user as any)?.verification?.status;
+        if (verificationStatus === VerificationStatus.PENDING) {
+          continue;
+        }
+      }
+
+      expiredIds.push(candidate._id);
+      const bucket = resolveSeatBucket(
+        candidate.userGender || userById.get(String(candidate.userId || candidate.user))?.gender,
+      );
+      if (bucket === 'female') femaleExpired += 1;
+      else maleExpired += 1;
+    }
+
+    if (expiredIds.length === 0) return;
+
+    await this.registrationModel.updateMany(
+      { _id: { $in: expiredIds } },
+      {
+        $set: {
+          status: 'waitlisted',
+          waitlistAt: now,
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+          paymentId: null,
+          payment: null,
+        },
+      },
+    );
+
+    const inc: any = {};
+    if (femaleExpired > 0) {
+      inc.waitlistedFemaleCount = femaleExpired;
+    }
+    if (maleExpired > 0) {
+      inc.waitlistedMaleCount = maleExpired;
+    }
+    if (Object.keys(inc).length > 0) {
+      await this.flagshipModel.findByIdAndUpdate(flagshipId, { $inc: inc });
+    }
+  }
+
+  private async promoteWaitlistForFlagship(flagshipId: string) {
+    if (!flagshipId) return;
+
+    const flagship = await this.flagshipModel.findById(flagshipId).lean();
+    if (!flagship) return;
+
+    await this.expireWaitlistOffers(flagshipId);
+    await this.expireWaitlistAcceptances(flagshipId);
+
+    const now = new Date();
+    const offerWindowMs = 4 * 60 * 60 * 1000;
+
+    const activeOfferMale = await this.registrationModel.countDocuments({
+      flagship: flagshipId,
+      status: 'waitlisted',
+      waitlistOfferStatus: 'offered',
+      userGender: { $ne: 'female' },
+      waitlistOfferExpiresAt: { $gt: now },
+    });
+    const activeOfferFemale = await this.registrationModel.countDocuments({
+      flagship: flagshipId,
+      status: 'waitlisted',
+      waitlistOfferStatus: 'offered',
+      userGender: 'female',
+      waitlistOfferExpiresAt: { $gt: now },
+    });
+
+    let remainingMale =
+      getRemainingSeatsForBucket(flagship, 'male') - activeOfferMale;
+    let remainingFemale =
+      getRemainingSeatsForBucket(flagship, 'female') - activeOfferFemale;
+
+    const sendOfferForBucket = async (bucket: 'male' | 'female') => {
+      const query: any = {
+        flagship: flagshipId,
+        status: 'waitlisted',
+        waitlistOfferStatus: { $ne: 'offered' },
+      };
+      if (bucket === 'female') {
+        query.userGender = 'female';
+      } else {
+        query.userGender = { $ne: 'female' };
+      }
+
+      const offerExpiresAt = new Date(Date.now() + offerWindowMs);
+      const candidate = await this.registrationModel.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            waitlistOfferStatus: 'offered',
+            waitlistOfferSentAt: now,
+            waitlistOfferAcceptedAt: null,
+            waitlistOfferExpiresAt: offerExpiresAt,
+            waitlistOfferResponse: null,
+          },
+        },
+        { sort: { waitlistAt: 1, createdAt: 1 }, new: true },
+      );
+
+      if (!candidate) return false;
+
+      try {
+        const userId = candidate.userId?.toString?.() || candidate.user?.toString?.();
+        if (userId) {
+          await this.notificationService.createForUser(userId, {
+            title: 'Seat available - confirm interest',
+            message: 'A seat just opened up. Are you still interested in joining? You have 4 hours to respond.',
+            type: 'waitlist',
+            link: `/waitlist/offer/${candidate._id}`,
+            metadata: {
+              registrationId: candidate._id?.toString?.(),
+              flagshipId: String(flagshipId),
+              offerExpiresAt: offerExpiresAt.toISOString(),
+            },
+          });
+        }
+      } catch (error) {
+        console.log('Failed to notify waitlisted user:', error);
+      }
+
+      return true;
+    };
+
+    while (remainingMale > 0) {
+      const offered = await sendOfferForBucket('male');
+      if (!offered) break;
+      remainingMale -= 1;
+    }
+
+    while (remainingFemale > 0) {
+      const offered = await sendOfferForBucket('female');
+      if (!offered) break;
+      remainingFemale -= 1;
+    }
+  }
+
+  async processWaitlistForFlagship(flagshipId: string) {
+    await this.promoteWaitlistForFlagship(flagshipId);
+    return { flagshipId };
+  }
+
+  async respondWaitlistOffer(
+    registrationId: string,
+    user: User,
+    response: 'accepted' | 'declined',
+  ) {
+    const userId = user?._id?.toString();
+    if (!userId) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'waitlist_auth_required',
+      });
+    }
+
+    const now = new Date();
+    const acceptWindowMs = 4 * 60 * 60 * 1000;
+    const registration: any = await this.registrationModel
+      .findById(registrationId)
+      .lean()
+      .exec();
+    if (!registration) {
+      throw new NotFoundException('Registration not found.');
+    }
+
+    const registrationUserId = registration.userId || registration.user;
+    if (!registrationUserId || String(registrationUserId) !== String(userId)) {
+      throw new ForbiddenException('You can only respond to your own waitlist offer.');
+    }
+
+    if (String(registration.status || '') !== 'waitlisted') {
+      throw new BadRequestException({
+        message: 'This registration is no longer on the waitlist.',
+        code: 'waitlist_not_active',
+      });
+    }
+
+    if (registration.waitlistOfferStatus !== 'offered') {
+      throw new BadRequestException({
+        message: 'There is no active waitlist offer for this registration.',
+        code: 'waitlist_offer_missing',
+      });
+    }
+
+    if (registration.waitlistOfferExpiresAt && new Date(registration.waitlistOfferExpiresAt) <= now) {
+      await this.registrationModel.findByIdAndUpdate(registration._id, {
+        $set: {
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistAt: now,
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+        },
+      });
+
+      await this.promoteWaitlistForFlagship(String(registration.flagship || registration.flagshipId));
+
+      throw new BadRequestException({
+        message: 'This waitlist offer has expired.',
+        code: 'waitlist_offer_expired',
+      });
+    }
+
+    const flagshipId = String(registration.flagship || registration.flagshipId || '');
+
+    if (response === 'declined') {
+      const updated = await this.registrationModel.findOneAndUpdate(
+        {
+          _id: registration._id,
+          status: 'waitlisted',
+          waitlistOfferStatus: 'offered',
+          waitlistOfferExpiresAt: { $gt: now },
+        },
+        {
+          $set: {
+            waitlistOfferStatus: 'expired',
+            waitlistOfferResponse: 'declined',
+            waitlistAt: now,
+            waitlistOfferSentAt: null,
+            waitlistOfferAcceptedAt: null,
+            waitlistOfferExpiresAt: null,
+          },
+        },
+        { new: true },
+      );
+
+      if (!updated) {
+        throw new BadRequestException({
+          message: 'Waitlist offer could not be declined. Please retry.',
+          code: 'waitlist_offer_state_changed',
+        });
+      }
+
+      await this.promoteWaitlistForFlagship(flagshipId);
+      return updated;
+    }
+
+    const flagship = await this.flagshipModel.findById(flagshipId).lean();
+    if (!flagship) {
+      throw new NotFoundException('Flagship not found.');
+    }
+
+    const userDoc = await this.userModel.findById(userId).select('verification gender').lean();
+    const bucket = resolveSeatBucket(
+      registration.userGender || (userDoc as any)?.gender || user?.gender,
+    );
+    const remainingSeats = getRemainingSeatsForBucket(flagship, bucket);
+    if (remainingSeats <= 0) {
+      await this.registrationModel.findByIdAndUpdate(registration._id, {
+        $set: {
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistAt: now,
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+        },
+      });
+
+      throw new BadRequestException({
+        message: 'Seats filled before you responded. You remain on the waitlist.',
+        code: 'waitlist_seats_full',
+      });
+    }
+
+    const isVerified =
+      (userDoc as any)?.verification?.status === VerificationStatus.VERIFIED;
+    const nextStatus = isVerified ? 'payment' : 'onboarding';
+
+    const acceptExpiresAt = new Date(Date.now() + acceptWindowMs);
+    const updated = await this.registrationModel.findOneAndUpdate(
+      {
+        _id: registration._id,
+        status: 'waitlisted',
+        waitlistOfferStatus: 'offered',
+        waitlistOfferExpiresAt: { $gt: now },
+      },
+      {
+        $set: {
+          status: nextStatus,
+          waitlistOfferStatus: 'accepted',
+          waitlistOfferResponse: 'accepted',
+          waitlistOfferSentAt: registration.waitlistOfferSentAt || now,
+          waitlistOfferAcceptedAt: now,
+          waitlistOfferExpiresAt: acceptExpiresAt,
+        },
+      },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new BadRequestException({
+        message: 'Waitlist offer could not be accepted. Please retry.',
+        code: 'waitlist_offer_state_changed',
+      });
+    }
+
+    await this.adjustFlagshipSeatCount(flagshipId, bucket, 'waitlisted', -1);
+    return updated;
+  }
   private async updateUserTripStats(userId: string): Promise<void> {
     const attendedCount = await this.registrationModel.countDocuments({
       userId,
-      status: 'completed',
+      completedAt: { $exists: true },
     });
 
     await this.userModel.findByIdAndUpdate(userId, {
@@ -75,9 +470,17 @@ export class RegistrationService {
         throw new NotFoundException(`Flagship with ID ${registration.flagshipId} not found`);
       }
 
+      const initialStatus =
+        user?.verification?.status === VerificationStatus.VERIFIED
+          ? 'payment'
+          : 'onboarding';
+
       const newRegistration = new this.registrationModel({
         ...registration,
         amountDue: registration.price,
+        status: initialStatus,
+        userGender: user?.gender,
+        waitlistOfferStatus: 'none',
         userId: userId,
         user: user,
         flagship: new mongoose.Types.ObjectId(registration.flagshipId)
@@ -141,8 +544,11 @@ export class RegistrationService {
       await this.updateUserTripStats(userId);
 
       return await this.registrationModel.find({
-        status: { $in: ["completed", "refunded"] },
-        userId: userId
+        userId: userId,
+        $or: [
+          { completedAt: { $exists: true } },
+          { refundStatus: 'refunded' },
+        ],
       })
         .populate('flagshipId')
         .populate('ratingId')
@@ -160,8 +566,11 @@ export class RegistrationService {
 
       const now = new Date();
       const registrations = await this.registrationModel.find({
-        status: { $nin: ["completed", "refunded"] },
-        userId: userId
+        userId: userId,
+        $and: [
+          { completedAt: { $exists: false } },
+          { refundStatus: { $ne: 'refunded' } },
+        ],
       })
         .populate({
           path: 'flagship',
@@ -177,20 +586,6 @@ export class RegistrationService {
 
       return await Promise.all(
         upcomingOnly.map(async (registration) => {
-          const price = (registration as any)?.price;
-          const amountDue = (registration as any)?.amountDue;
-          const status = String((registration as any)?.status || '');
-          const hasApprovedPayment =
-            typeof price === 'number' &&
-            typeof amountDue === 'number' &&
-            amountDue < price;
-
-          if (status === 'accepted') {
-            (registration as any).status = hasApprovedPayment ? 'confirmed' : 'pending';
-          } else if (status === 'notReserved' && hasApprovedPayment) {
-            (registration as any).status = 'confirmed';
-          }
-
           if (registration.flagship.images && registration.flagship.images.length > 0) {
             const imageUrls = await Promise.all(
               registration.flagship.images.map(async (imageKey) => {
@@ -272,8 +667,8 @@ export class RegistrationService {
     }
 
     const updated = await this.registrationModel.findOneAndUpdate(
-      { _id: registration._id, userId: registrationUserId, status: 'confirmed' },
-      { $set: { status: 'cancelled' } },
+      { _id: registration._id, userId: registrationUserId, status: 'confirmed', cancelledAt: { $exists: false } },
+      { $set: { cancelledAt: new Date(), seatLocked: false } },
       { new: true },
     );
 
@@ -282,6 +677,15 @@ export class RegistrationService {
         message: 'Seat could not be cancelled. Please retry.',
         code: 'cancel_state_changed',
       });
+    }
+
+    if (registration.seatLocked) {
+      const flagshipId = String(registration.flagship || registration.flagshipId || '');
+      if (flagshipId) {
+        const bucket = resolveSeatBucket(registration.userGender || user?.gender);
+        await this.adjustFlagshipSeatCount(flagshipId, bucket, 'confirmed', -1);
+        await this.promoteWaitlistForFlagship(flagshipId);
+      }
     }
 
     try {

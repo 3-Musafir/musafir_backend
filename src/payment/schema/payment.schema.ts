@@ -13,6 +13,7 @@ export interface Payment extends Document {
   walletApplied?: number;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
+  rejectionReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +69,7 @@ export const PaymentSchema = new Schema<Payment>(
       enum: ['pendingApproval', 'approved', 'rejected'],
       default: 'pendingApproval',
     },
+    rejectionReason: { type: String, required: false },
   },
   {
     timestamps: true,

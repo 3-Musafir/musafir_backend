@@ -1,0 +1,18 @@
+<p>Hi Admin,</p>
+</br>
+<p>A user has re-applied for verification.</p>
+<ul>
+  <li><strong>User ID:</strong> {{userId}}</li>
+  <li><strong>Name:</strong> {{fullName}}</li>
+  {{#if email}}<li><strong>Email:</strong> {{email}}</li>{{/if}}
+  {{#if phone}}<li><strong>Phone:</strong> {{phone}}</li>{{/if}}
+  {{#if method}}<li><strong>Method:</strong> {{method}}</li>{{/if}}
+  {{#if flagshipId}}<li><strong>Flagship ID:</strong> {{flagshipId}}</li>{{/if}}
+  {{#if requestedAt}}<li><strong>Requested At:</strong> {{requestedAt}}</li>{{/if}}
+</ul>
+{{#if adminUrl}}
+<p><a href="{{adminUrl}}">Review this user</a></p>
+{{/if}}
+</br>
+<p>Best regards,</p>
+<p>3Musafir System</p>

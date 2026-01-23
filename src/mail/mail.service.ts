@@ -209,7 +209,11 @@ export class MailService {
     }
   }
 
-  async sendVerificationRejectedEmail(email: string, fullName: string) {
+  async sendVerificationRejectedEmail(
+    email: string,
+    fullName: string,
+    reason?: string,
+  ) {
     try {
       await this.sendMail(
         email,
@@ -217,6 +221,7 @@ export class MailService {
         './verification-rejected',
         {
           fullName: fullName,
+          reason: reason,
         },
       );
       return true;
@@ -281,6 +286,66 @@ export class MailService {
       return true;
     } catch (error) {
       console.log('Error sending payment rejected email:', error);
+      return error;
+    }
+  }
+
+  async sendAdminVerificationReapplyNotification(context: {
+    userId: string;
+    fullName: string;
+    email?: string;
+    phone?: string;
+    method?: string;
+    flagshipId?: string;
+    requestedAt?: Date | string;
+    adminUrl?: string;
+  }) {
+    try {
+      await this.sendMail(
+        process.env.MUSAFIR_MAIL,
+        'Verification Re-application Submitted',
+        './verification-reapply-admin',
+        {
+          ...context,
+          requestedAt: context.requestedAt
+            ? new Date(context.requestedAt).toLocaleString('en-US')
+            : undefined,
+        },
+      );
+      return true;
+    } catch (error) {
+      console.log('Error sending admin verification reapply notification:', error);
+      return error;
+    }
+  }
+
+  async sendAdminPaymentReuploadNotification(context: {
+    paymentId: string;
+    registrationId: string;
+    flagshipId?: string;
+    flagshipName?: string;
+    userId?: string;
+    userName?: string;
+    userEmail?: string;
+    amount?: number;
+    submittedAt?: Date | string;
+    adminUrl?: string;
+  }) {
+    try {
+      await this.sendMail(
+        process.env.MUSAFIR_MAIL,
+        'Payment Re-upload Submitted',
+        './payment-reupload-admin',
+        {
+          ...context,
+          submittedAt: context.submittedAt
+            ? new Date(context.submittedAt).toLocaleString('en-US')
+            : undefined,
+        },
+      );
+      return true;
+    } catch (error) {
+      console.log('Error sending admin payment reupload notification:', error);
       return error;
     }
   }

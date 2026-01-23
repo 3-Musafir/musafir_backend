@@ -13,6 +13,7 @@ export interface Payment extends Document {
   walletApplied?: number;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
+  rejectionReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }

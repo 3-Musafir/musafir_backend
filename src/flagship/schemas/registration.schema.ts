@@ -11,6 +11,7 @@ export const RegistrationSchema = new Schema(
     legacyRegistrationKey: { type: String, required: true, index: true, unique: true, sparse: true },
     flagshipId: { type: Schema.Types.ObjectId, ref: 'Flagship', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    userGender: { type: String, required: false },
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     flagship: { type: Schema.Types.ObjectId, ref: 'Flagship', required: true },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment', required: false, default: null },
@@ -26,7 +27,18 @@ export const RegistrationSchema = new Schema(
     price: { type: Number, required: false },
     amountDue: { type: Number, required: false },
     discountApplied: { type: Number, required: false, default: 0 },
-    status: { type: String, required: false, default: "pending" },
+    status: { type: String, required: false, default: 'new' },
+    waitlistAt: { type: Date, required: false },
+    waitlistOfferSentAt: { type: Date, required: false },
+    waitlistOfferAcceptedAt: { type: Date, required: false },
+    waitlistOfferExpiresAt: { type: Date, required: false },
+    waitlistOfferStatus: { type: String, required: false, default: 'none' },
+    waitlistOfferResponse: { type: String, required: false },
+    seatLocked: { type: Boolean, required: false, default: false },
+    seatLockedAt: { type: Date, required: false },
+    cancelledAt: { type: Date, required: false },
+    refundStatus: { type: String, required: false, default: 'none' },
+    completedAt: { type: Date, required: false },
     ratingId: { type: Schema.Types.ObjectId, ref: 'Rating', required: false, default: null },
   },
   {
@@ -40,3 +52,4 @@ export const RegistrationSchema = new Schema(
 );
 
 RegistrationSchema.index({ userId: 1, flagship: 1 });
+RegistrationSchema.index({ flagship: 1, status: 1, waitlistAt: 1 });

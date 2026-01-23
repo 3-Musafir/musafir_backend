@@ -38,6 +38,15 @@ function transformValue(doc, ret: { [key: string]: any }) {
   return ret;
 }
 
+interface VerificationHistoryEntry {
+  status?: string;
+  method?: string;
+  reason?: string;
+  source?: string;
+  flagshipId?: string;
+  createdAt?: Date;
+}
+
 interface VerificationSchema {
   VerificationID?: string;
   EncodedVideo?: string;
@@ -49,6 +58,7 @@ interface VerificationSchema {
   videoStorageKey?: string;
   VerificationDate?: Date;
   VerificationRequestDate?: Date;
+  history?: VerificationHistoryEntry[];
   RequestCall: boolean;
 }
 
@@ -68,6 +78,16 @@ const VerificationSchema = new Schema<VerificationSchema>({
   videoStorageKey: { type: String, required: false },
   VerificationDate: { type: Date, required: false },
   VerificationRequestDate: { type: Date, required: false },
+  history: [
+    {
+      status: { type: String, required: false },
+      method: { type: String, required: false },
+      reason: { type: String, required: false },
+      source: { type: String, required: false },
+      flagshipId: { type: String, required: false },
+      createdAt: { type: Date, required: false },
+    },
+  ],
 });
 
 export const UserSchema = new Schema(

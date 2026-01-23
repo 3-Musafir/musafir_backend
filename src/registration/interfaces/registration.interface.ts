@@ -8,6 +8,7 @@ export class Registration {
   legacyRegistrationKey?: string;
   readonly flagshipId: string | Flagship;
   readonly userId: string;
+  userGender?: 'male' | 'female' | 'other';
   readonly user: User;
   readonly flagship: Flagship;
   readonly paymentId?: string;
@@ -22,21 +23,27 @@ export class Registration {
   readonly tripType?: string;
   readonly price: number;
   readonly amountDue: number;
+  waitlistAt?: Date;
+  waitlistOfferSentAt?: Date;
+  waitlistOfferAcceptedAt?: Date;
+  waitlistOfferExpiresAt?: Date;
+  waitlistOfferStatus?: 'none' | 'offered' | 'accepted' | 'expired';
+  waitlistOfferResponse?: 'accepted' | 'declined';
+  seatLocked?: boolean;
+  seatLockedAt?: Date;
+  cancelledAt?: Date;
+  refundStatus?: 'none' | 'pending' | 'processing' | 'refunded' | 'rejected';
+  completedAt?: Date;
   readonly walletPaid?: number;
   readonly discountApplied?: number;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
   ratingId?: string | Rating;
   status:
-    | 'pending'
-    | 'accepted'
-    | 'confirmed'
-    | 'rejected'
-    | 'notReserved'
-    | 'cancelled'
-    | 'refundProcessing'
-    | 'refunded'
-    | 'completed'
-    | 'didntPick';
+    | 'new'
+    | 'waitlisted'
+    | 'onboarding'
+    | 'payment'
+    | 'confirmed';
   comment: string;
 }
