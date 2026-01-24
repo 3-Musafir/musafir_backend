@@ -18,7 +18,7 @@ import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { NotificationService } from 'src/notifications/notification.service';
 import { computeRefundQuote } from './refund-policy.util';
 import { RefundSettlementService } from 'src/refund-settlement/refund-settlement.service';
-import { WalletService } from 'src/wallet/wallet.service';
+import { isWalletTxIdempotent, WalletService } from 'src/wallet/wallet.service';
 import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils';
 
 @Injectable()
@@ -1218,6 +1218,7 @@ export class PaymentService {
 
       let walletDebited = false;
       let walletSourceId: string | null = null;
+      let walletTx: any = null;
 
       try {
         if (walletToApply > 0) {
@@ -1227,20 +1228,51 @@ export class PaymentService {
               code: 'wallet_user_missing',
             });
           }
-          walletSourceId = `payment:${payment._id.toString()}`;
-          await this.walletService.debit({
-            userId: registrationUserId,
-            amount: walletToApply,
-            type: 'flagship_payment_wallet_debit',
-            sourceId: walletSourceId,
-            sourceType: 'flagship_payment',
-            metadata: {
-              paymentId: payment._id?.toString(),
-              registrationId: registration._id?.toString(),
-              walletApplied: walletToApply,
-            },
-          });
-          walletDebited = true;
+          if (!payment.walletDebitId) {
+            payment.walletDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
+              .toString(36)
+              .slice(2, 8)}`;
+            await payment.save();
+          }
+          walletSourceId = payment.walletDebitId;
+          try {
+            walletTx = await this.walletService.debit({
+              userId: registrationUserId,
+              amount: walletToApply,
+              type: 'flagship_payment_wallet_debit',
+              sourceId: walletSourceId,
+              sourceType: 'flagship_payment',
+              metadata: {
+                paymentId: payment._id?.toString(),
+                registrationId: registration._id?.toString(),
+                walletApplied: walletToApply,
+              },
+            });
+          } catch (err: any) {
+            const code = err?.response?.data?.code || err?.code || err?.message;
+            if (code === 'wallet_tx_void') {
+              payment.walletDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
+                .toString(36)
+                .slice(2, 8)}`;
+              await payment.save();
+              walletSourceId = payment.walletDebitId;
+              walletTx = await this.walletService.debit({
+                userId: registrationUserId,
+                amount: walletToApply,
+                type: 'flagship_payment_wallet_debit',
+                sourceId: walletSourceId,
+                sourceType: 'flagship_payment',
+                metadata: {
+                  paymentId: payment._id?.toString(),
+                  registrationId: registration._id?.toString(),
+                  walletApplied: walletToApply,
+                },
+              });
+            } else {
+              throw err;
+            }
+          }
+          walletDebited = !isWalletTxIdempotent(walletTx);
         }
 
         const updatedDiscountApplied = currentDiscountApplied + discountDelta;
@@ -1332,6 +1364,8 @@ export class PaymentService {
               voidedBy: registrationUserId || undefined,
               note: 'Rolled back wallet debit due to approval failure',
             });
+            payment.walletDebitId = '';
+            await payment.save();
           } catch (e) {
             console.log('Failed to rollback wallet debit after approval error:', e);
           }

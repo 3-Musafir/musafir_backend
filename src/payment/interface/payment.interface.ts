@@ -11,6 +11,7 @@ export interface Payment extends Document {
   discount?: number;
   walletRequested?: number;
   walletApplied?: number;
+  walletDebitId?: string;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   rejectionReason?: string;
