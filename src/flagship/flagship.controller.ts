@@ -40,6 +40,16 @@ import { FlagshipFilterDto } from './dto/get-flagship.dto';
 import { TripQueryDto } from './dto/trip-query.dto';
 import { Flagship } from './interfaces/flagship.interface';
 
+const parsePagination = (limit?: string, page?: string) => {
+  const parsedLimit = limit ? Number(limit) : undefined;
+  const parsedPage = page ? Number(page) : undefined;
+
+  return {
+    limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : undefined,
+    page: Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : undefined,
+  };
+};
+
 @ApiTags('Flagship')
 @Controller('flagship')
 export class FlagshipController {
@@ -189,8 +199,11 @@ export class FlagshipController {
   findRegisteredUsers(
     @Param('id') id: string,
     @Query('search') search: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
   ) {
-    return this.flagshipService.findRegisteredUsers(id, search);
+    const pagination = parsePagination(limit, page);
+    return this.flagshipService.findRegisteredUsers(id, search, pagination);
   }
 
   @Get('pending-verification/:id')
@@ -199,8 +212,13 @@ export class FlagshipController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get pending verification users for a flagship' })
   @ApiOkResponse({})
-  findPendingVerificationUsers(@Param('id') id: string) {
-    return this.flagshipService.findPendingVerificationUsers(id);
+  findPendingVerificationUsers(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    const pagination = parsePagination(limit, page);
+    return this.flagshipService.findPendingVerificationUsers(id, pagination);
   }
 
   @Get('paid/:id')
@@ -212,8 +230,11 @@ export class FlagshipController {
   findPaidUsers(
     @Param('id') id: string,
     @Query('paymentType') paymentType: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
   ) {
-    return this.flagshipService.findPaidUsers(id, paymentType);
+    const pagination = parsePagination(limit, page);
+    return this.flagshipService.findPaidUsers(id, paymentType, pagination);
   }
 
   @Get('registeration-stats/:id')

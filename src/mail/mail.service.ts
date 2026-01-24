@@ -377,6 +377,11 @@ export class MailService {
       const formatDate = (d?: Date | string) =>
         d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined;
 
+      if (!process.env.MUSAFIR_MAIL) {
+        console.warn('Skipping admin registration email: MUSAFIR_MAIL is not configured.');
+        return true;
+      }
+
       await this.sendMail(
         process.env.MUSAFIR_MAIL,
         'New Trip Registration Submitted',

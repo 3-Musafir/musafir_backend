@@ -1,6 +1,7 @@
 import {
     Body,
     Controller,
+    Delete,
     Get,
     HttpCode,
     HttpStatus,
@@ -17,6 +18,7 @@ import { GetUser } from 'src/auth/decorators/user.decorator';
 import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { AdminDeleteRegistrationDto } from './dto/admin-delete-registration.dto';
 
 @ApiTags('Registration')
 @Controller('registration')
@@ -143,6 +145,24 @@ export class RegistrationController {
         statusCode: 200,
         message: 'Waitlist processed.',
         data: await this.registrationService.processWaitlistForFlagship(flagshipId),
+      };
+    }
+  
+    @UseGuards(JwtAuthGuard)
+    @Roles('admin')
+    @Delete('/admin/:registrationId')
+    async deleteRegistrationAsAdmin(
+      @Param('registrationId') registrationId: string,
+      @Body() body: AdminDeleteRegistrationDto,
+    ) {
+      const data = await this.registrationService.deleteRegistrationAsAdmin(
+        registrationId,
+        body?.reason,
+      );
+      return {
+        statusCode: 200,
+        message: 'Registration deleted successfully.',
+        data,
       };
     }
 } 

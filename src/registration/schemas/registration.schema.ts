@@ -53,3 +53,4 @@ export const RegistrationSchema = new Schema(
 
 RegistrationSchema.index({ userId: 1, flagship: 1 });
 RegistrationSchema.index({ flagship: 1, status: 1, waitlistAt: 1 });
+RegistrationSchema.index({ userId: 1, flagship: 1, cancelledAt: 1 });

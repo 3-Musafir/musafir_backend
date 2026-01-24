@@ -470,6 +470,42 @@ export class RegistrationService {
         throw new NotFoundException(`Flagship with ID ${registration.flagshipId} not found`);
       }
 
+      const existing = await this.registrationModel
+        .findOne({
+          userId,
+          flagship: registration.flagshipId,
+          cancelledAt: { $exists: false },
+          refundStatus: { $ne: 'refunded' },
+        })
+        .select('_id isPaid status amountDue')
+        .lean()
+        .exec();
+
+      if (existing) {
+        return {
+          registrationId: String(existing._id),
+          message: 'You already have a registration for this flagship.',
+          alreadyRegistered: true,
+          isPaid: Boolean(existing.isPaid),
+          status: existing.status,
+          amountDue: existing.amountDue ?? 0,
+        };
+      }
+
+      const existing = await this.registrationModel.findOne({
+        userId,
+        flagship: registration.flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      }).select('_id').lean().exec();
+
+      if (existing) {
+        return {
+          registrationId: String(existing._id),
+          message: 'You already have a registration for this flagship.',
+        };
+      }
+
       const initialStatus =
         user?.verification?.status === VerificationStatus.VERIFIED
           ? 'payment'
@@ -743,4 +779,121 @@ export class RegistrationService {
       throw new Error(`Failed to send the re-evalute request to jury: ${error.message}`);
     }
   }
-} 
+
+  async deleteRegistrationAsAdmin(registrationId: string, reason?: string) {
+    if (!registrationId) {
+      throw new BadRequestException({
+        message: 'Registration ID is required.',
+        code: 'registration_id_required',
+      });
+    }
+
+    const cleanReason = typeof reason === 'string' ? reason.trim() : undefined;
+
+    const registration = await this.registrationModel
+      .findById(registrationId)
+      .populate('flagship')
+      .populate('user')
+      .lean()
+      .exec();
+
+    if (!registration) {
+      throw new NotFoundException('Registration not found.');
+    }
+
+    const registrationUserId = registration.userId || registration.user;
+    const user = registration.user as any;
+    const userEmail = user?.email;
+    const userFullName = user?.fullName || 'Musafir';
+    const flagshipDoc = registration.flagship || registration.flagshipId;
+    const flagshipId = flagshipDoc ? String((flagshipDoc as any)._id || flagshipDoc) : null;
+    const tripName =
+      (flagshipDoc && (flagshipDoc as any)?.tripName) || 'your trip';
+    const seatLocked = Boolean(registration.seatLocked);
+    const isWaitlisted = String(registration.status || '') === 'waitlisted';
+    const bucket = resolveSeatBucket(
+      registration.userGender || user?.gender,
+    );
+    const paymentId = registration.paymentId || registration.payment;
+
+    if (paymentId) {
+      await this.paymentModel.findByIdAndDelete(paymentId);
+    }
+
+    await this.registrationModel.findByIdAndDelete(registrationId);
+
+    if (seatLocked && flagshipId) {
+      await this.flagshipModel.findByIdAndUpdate(
+        flagshipId,
+        { $inc: getSeatCounterUpdate(bucket, 'confirmed', -1) },
+      );
+    }
+
+    if (isWaitlisted && flagshipId) {
+      await this.flagshipModel.findByIdAndUpdate(
+        flagshipId,
+        { $inc: getSeatCounterUpdate(bucket, 'waitlisted', -1) },
+      );
+    }
+
+    if (seatLocked && flagshipId) {
+      try {
+        await this.promoteWaitlistForFlagship(flagshipId);
+      } catch (error) {
+        console.error(
+          'Failed to promote waitlist after admin deleted registration:',
+          error,
+        );
+      }
+    }
+
+    if (registrationUserId) {
+      const notificationMessage = cleanReason
+        ? `Your seat for ${tripName} was removed by admin. Reason: ${cleanReason}. Please re-register when you are ready.`
+        : `Your seat for ${tripName} was removed by admin. Please re-register when you are ready.`;
+      try {
+        const registrationLink = flagshipId
+          ? `/flagship/flagship-requirement?id=${flagshipId}&fromDetailsPage=true`
+          : undefined;
+
+        await this.notificationService.createForUser(String(registrationUserId), {
+          title: 'Registration removed',
+          message: notificationMessage,
+          type: 'general',
+          link: registrationLink,
+          metadata: {
+            registrationId,
+            reason: cleanReason,
+          },
+        });
+      } catch (err) {
+        console.error('Failed to notify user about registration deletion:', err);
+      }
+    }
+
+    if (userEmail) {
+      const tripLink =
+        flagshipId && process.env.FRONTEND_URL
+          ? `${process.env.FRONTEND_URL}/flagship/flagship-requirement?id=${flagshipId}`
+          : undefined;
+
+      try {
+        await this.mailService.sendMail(
+          userEmail,
+          'Your 3Musafir registration was removed',
+          './registration-deleted',
+          {
+            fullName: userFullName,
+            tripName,
+            tripLink,
+            reason: cleanReason,
+          },
+        );
+      } catch (error) {
+        console.error('Failed to send registration deletion email:', error);
+      }
+    }
+
+    return { registrationId, reason: cleanReason };
+  }
+}

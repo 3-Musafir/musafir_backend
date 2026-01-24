@@ -1,0 +1,16 @@
+<p>Dear {{fullName}},</p>
+</br>
+<p>Your registration for <strong>{{tripName}}</strong> was removed by our team.</p>
+{{#if reason}}
+  <p><strong>Reason:</strong> {{reason}}</p>
+{{/if}}
+</br>
+{{#if tripLink}}
+  <p>You can re-register on the trip page here:</p>
+  <p><a href="{{tripLink}}">{{tripLink}}</a></p>
+{{/if}}
+</br>
+<p>If you need help, reply to this email and we’ll guide you through the next steps.</p>
+</br>
+<p>Best regards,</p>
+<p>The 3Musafir Team</p>

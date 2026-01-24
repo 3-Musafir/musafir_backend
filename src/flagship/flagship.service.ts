@@ -362,41 +362,63 @@ export class FlagshipService {
   }
 
   // TODOS
-  async findRegisteredUsers(id: string, search: string) {
+  async findRegisteredUsers(
+    id: string,
+    search: string,
+    options?: { limit?: number; page?: number },
+  ) {
     const searchCriteria = search
       ? { fullName: { $regex: search, $options: 'i' } }
       : {};
 
-    const registrations = await this.registerationModel
+    const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : undefined;
+    const page = options?.page && options.page > 1 ? options.page : 1;
+    const skip = limit ? (page - 1) * limit : undefined;
+
+    const query = this.registerationModel
       .find({ flagship: id })
+      .sort({ createdAt: -1 })
       .populate({
         path: 'user',
         model: 'User',
-        match: {
-          ...searchCriteria,
-          'verification.status': VerificationStatus.VERIFIED,
-        },
+        match: searchCriteria,
+        select: '_id fullName city verification gender dateOfBirth profileImg',
       })
-      .exec();
+      .lean();
 
-    const filteredRegistrations = registrations.filter(
-      (registration) => registration.user !== null,
-    );
+    if (limit) query.limit(limit);
+    if (skip) query.skip(skip);
 
-    return filteredRegistrations;
+    const registrations = await query.exec();
+
+    return registrations;
   }
 
-  async findPendingVerificationUsers(id: string) {
+  async findPendingVerificationUsers(
+    id: string,
+    options?: { limit?: number; page?: number },
+  ) {
     const verificationStatuses = [VerificationStatus.PENDING];
 
-    const registrations = await this.registerationModel
+    const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : undefined;
+    const page = options?.page && options.page > 1 ? options.page : 1;
+    const skip = limit ? (page - 1) * limit : undefined;
+
+    const query = this.registerationModel
       .find({ flagship: id })
+      .sort({ createdAt: -1 })
       .populate({
         path: 'user',
         model: 'User',
         match: { 'verification.status': { $in: verificationStatuses } },
+        select: '_id fullName city verification',
       })
-      .exec();
+      .lean();
+
+    if (limit) query.limit(limit);
+    if (skip) query.skip(skip);
+
+    const registrations = await query.exec();
 
     const filteredRegistrations = registrations.filter(
       (registration) => registration.user !== null,
@@ -405,12 +427,29 @@ export class FlagshipService {
     return filteredRegistrations;
   }
 
-  async findPaidUsers(id: string, paymentType: string) {
-    const registrations = await this.registerationModel
+  async findPaidUsers(
+    id: string,
+    paymentType: string,
+    options?: { limit?: number; page?: number },
+  ) {
+    const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : undefined;
+    const page = options?.page && options.page > 1 ? options.page : 1;
+    const skip = limit ? (page - 1) * limit : undefined;
+
+    const query = this.registerationModel
       .find({ flagship: id })
-      .populate({ path: 'user', model: 'User' })
-      .lean()
-      .exec();
+      .sort({ createdAt: -1 })
+      .populate({
+        path: 'user',
+        model: 'User',
+        select: '_id fullName city verification profileImg',
+      })
+      .lean();
+
+    if (limit) query.limit(limit);
+    if (skip) query.skip(skip);
+
+    const registrations = await query.exec();
 
     if (!registrations || registrations.length === 0) return [];
 
@@ -465,23 +504,23 @@ export class FlagshipService {
     // Get all registrations for this flagship
     const registrations = await this.registerationModel
       .find({ flagship: id })
-      .populate({ path: 'user', model: 'User' })
+      .populate({ path: 'user', model: 'User', select: 'gender dateOfBirth location city _id' })
       .populate({
         path: 'paymentId',
         model: 'Payment',
         match: { status: 'approved' },
       })
+      .lean()
       .exec();
 
-    // Get all registrations for all flagships to check if users are returning
-    const allRegistrations = await this.registerationModel
-      .find({ flagship: { $ne: id } })
-      .populate({ path: 'user', model: 'User' })
-      .exec();
+    // Get all registrations for other flagships to derive returning users via distinct user IDs
+    const returningUserIdsRaw = await this.registerationModel.distinct('user', {
+      flagship: { $ne: id },
+    });
 
     // Create a set of user IDs who have registered for other flagships
     const returningUserIds = new Set(
-      allRegistrations.map((reg) => reg.user?._id.toString()),
+      returningUserIdsRaw.map((userId) => String(userId)),
     );
 
     // Count new and returning users
