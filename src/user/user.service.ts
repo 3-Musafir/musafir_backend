@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -28,6 +29,8 @@ import {
 import { VerifyUserDto } from './dto/verify-user.dto';
 import { User, UserDocument } from './interfaces/user.interface';
 import { VerificationStatus } from '../constants/verification-status.enum';
+import { AppException } from '../common/exceptions/app.exception';
+import { ErrorCode } from '../constants/error-codes';
 import {
   buildProfileStatus,
   isProfileComplete as isProfileCompleteUtil,
@@ -236,16 +239,31 @@ export class UserService {
     referral2?: string,
   ) {
     if (!referral1 || !referral2) {
-      throw new BadRequestException('Two referral codes are required.');
+      throw new AppException(
+        ErrorCode.REFERRAL_CODES_REQUIRED,
+        'Two referral codes are required.',
+        HttpStatus.BAD_REQUEST,
+        'Please provide two referral codes from verified Musafirs to complete verification.',
+      );
     }
     if (referral1 === referral2) {
-      throw new BadRequestException('Referral codes must be different.');
+      throw new AppException(
+        ErrorCode.REFERRAL_CODES_MUST_DIFFER,
+        'Referral codes must be different.',
+        HttpStatus.BAD_REQUEST,
+        'Both referral codes must be from different people. Please use codes from two different verified Musafirs.',
+      );
     }
     if (
       applicant.referralID &&
       (applicant.referralID === referral1 || applicant.referralID === referral2)
     ) {
-      throw new BadRequestException('You cannot use your own referral code.');
+      throw new AppException(
+        ErrorCode.REFERRAL_CANNOT_USE_OWN,
+        'You cannot use your own referral code.',
+        HttpStatus.BAD_REQUEST,
+        'You cannot use your own referral code for verification. Please ask other verified Musafirs for their codes.',
+      );
     }
   }
 
@@ -589,7 +607,12 @@ export class UserService {
   async verifyWithReferrals(applicantId: string, verifyUser: VerifyUserDto) {
     const applicant = await this.userModel.findById(applicantId);
     if (!applicant) {
-      throw new BadRequestException('Applicant not found.');
+      throw new AppException(
+        ErrorCode.USER_NOT_FOUND,
+        'Applicant not found.',
+        HttpStatus.BAD_REQUEST,
+        'Unable to find your account. Please try logging in again.',
+      );
     }
 
     const { referral1, referral2 } = verifyUser;
@@ -601,27 +624,41 @@ export class UserService {
     ]);
 
     if (!user1 || !user2) {
-      throw new BadRequestException(
+      throw new AppException(
+        ErrorCode.REFERRAL_USER_NOT_VERIFIED,
         'Referral codes must belong to verified users.',
+        HttpStatus.BAD_REQUEST,
+        'Invalid referral codes. Please ask verified Musafirs for their codes.',
       );
     }
 
     if (user1._id.equals(user2._id)) {
-      throw new BadRequestException(
+      throw new AppException(
+        ErrorCode.REFERRAL_SAME_USER,
         'Referral codes must come from two different users.',
+        HttpStatus.BAD_REQUEST,
+        'Both referral codes belong to the same person. Please use codes from two different verified Musafirs.',
       );
     }
 
     if (user1._id.equals(applicant._id) || user2._id.equals(applicant._id)) {
-      throw new BadRequestException('You cannot verify yourself.');
+      throw new AppException(
+        ErrorCode.REFERRAL_CANNOT_VERIFY_SELF,
+        'You cannot verify yourself.',
+        HttpStatus.BAD_REQUEST,
+        'You cannot use your own account to verify yourself. Please ask other verified Musafirs for their codes.',
+      );
     }
 
     const genders = [user1.gender, user2.gender];
     const hasMale = genders.includes('male');
     const hasFemale = genders.includes('female');
     if (!hasMale || !hasFemale) {
-      throw new BadRequestException(
+      throw new AppException(
+        ErrorCode.REFERRAL_GENDER_REQUIREMENT,
         'Referral codes must include at least one male and one female verified Musafir.',
+        HttpStatus.BAD_REQUEST,
+        'For verification, you need referral codes from at least one male and one female verified Musafir.',
       );
     }
 
@@ -864,10 +901,16 @@ export class UserService {
   }
 
   async getUserData(user: User): Promise<User> {
-    const verifiedByMe = await this.userModel.countDocuments({
-      'verification.status': VerificationStatus.VERIFIED,
-      'verification.ReferralIDs': user.referralID,
-    });
+    if (!user) {
+      return null;
+    }
+
+    const verifiedByMe = user.referralID
+      ? await this.userModel.countDocuments({
+          'verification.status': VerificationStatus.VERIFIED,
+          'verification.ReferralIDs': user.referralID,
+        })
+      : 0;
 
     const userWithStatus = this.addProfileStatus(user);
 

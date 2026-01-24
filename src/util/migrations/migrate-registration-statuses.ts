@@ -58,9 +58,9 @@ export async function migrateRegistrationStatuses() {
     if (legacyStatus === 'confirmed' || hasApprovedPayment) {
       nextStatus = 'confirmed';
       seatLocked = legacyStatus !== 'cancelled' && legacyStatus !== 'refunded';
-    } else if (legacyStatus === 'waitlisted') {
+    } else if ((legacyStatus as string) === 'waitlisted') {
       nextStatus = 'waitlisted';
-    } else if (legacyStatus === 'onboarding' || (!verified && legacyStatus !== 'waitlisted')) {
+    } else if (legacyStatus === 'onboarding' || !verified) {
       nextStatus = 'onboarding';
     } else if (legacyStatus === 'payment' || verified) {
       nextStatus = 'payment';
