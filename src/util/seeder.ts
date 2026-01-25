@@ -1,17 +1,16 @@
-import mongoose, { Model } from 'mongoose';
+import mongoose from 'mongoose';
+import { RefreshTokenSchema } from 'src/auth/schemas/refresh-token.schema';
+import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { FaqSchema } from 'src/FAQ/schemas/faq.schema';
+import { FeedbackSchema } from 'src/feedback/schemas/feedback.schema';
 import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
-import { PaymentSchema } from 'src/payment/schema/payment.schema';
-import { UserSchema } from 'src/user/schemas/user.schema';
-import { faker } from '@faker-js/faker';
 import { BankAccountSchema } from 'src/payment/schema/bankAccount.schema';
-import { ForgotPasswordSchema } from 'src/user/schemas/forgot-password.schema';
-import { FeedbackSchema } from 'src/feedback/schemas/feedback.schema';
-import { RatingSchema } from 'src/Rating/schemas/rating.schema';
+import { PaymentSchema } from 'src/payment/schema/payment.schema';
 import { RefundSchema } from 'src/payment/schema/refund.schema';
-import { RefreshTokenSchema } from 'src/auth/schemas/refresh-token.schema';
-import { FaqSchema } from 'src/FAQ/schemas/faq.schema';
-import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RatingSchema } from 'src/Rating/schemas/rating.schema';
+import { ForgotPasswordSchema } from 'src/user/schemas/forgot-password.schema';
+import { UserSchema } from 'src/user/schemas/user.schema';
 
 const User = mongoose.model('users', UserSchema);
 const Flagship = mongoose.model('flagships', FlagshipSchema);
