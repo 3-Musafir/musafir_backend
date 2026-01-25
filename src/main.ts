@@ -43,7 +43,7 @@ async function bootstrap() {
     origin: (origin, callback) => {
       const allowedOrigins = [
         'http://localhost:3000',
-        'https://test.3musafir.com',
+        'https://staging.3musafir.com',
         'https://www.3musafir.com',
       ];
       if (!origin) return callback(null, true);
