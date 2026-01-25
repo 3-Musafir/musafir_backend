@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CreateFlagshipDto } from './dto/create-flagship.dto';
 import { UpdateFlagshipDto } from './dto/update-flagship.dto';
 import { Flagship } from './interfaces/flagship.interface';
@@ -365,66 +365,252 @@ export class FlagshipService {
   async findRegisteredUsers(
     id: string,
     search: string,
-    options?: { limit?: number; page?: number },
+    filters?: {
+      limit?: number;
+      page?: number;
+      verificationStatus?: string;
+      rejectedOnly?: boolean;
+      excludeVerificationStatus?: string;
+    },
   ) {
-    const searchCriteria = search
-      ? { fullName: { $regex: search, $options: 'i' } }
-      : {};
-
-    const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : undefined;
-    const page = options?.page && options.page > 1 ? options.page : 1;
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
+    const flagshipObjectId = new Types.ObjectId(id);
+    const limit =
+      filters?.limit && filters.limit > 0 ? Math.min(filters.limit, 200) : undefined;
+    const page = filters?.page && filters.page > 1 ? filters.page : 1;
     const skip = limit ? (page - 1) * limit : undefined;
 
-    const query = this.registerationModel
-      .find({ flagship: id })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: 'user',
-        model: 'User',
-        match: searchCriteria,
-        select: '_id fullName city verification gender dateOfBirth profileImg',
-      })
-      .lean();
+    const parseStatus = (value?: string): VerificationStatus | null => {
+      if (!value) return null;
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'all') return null;
+      if (Object.values(VerificationStatus).includes(normalized as VerificationStatus)) {
+        return normalized as VerificationStatus;
+      }
+      return null;
+    };
 
-    if (limit) query.limit(limit);
-    if (skip) query.skip(skip);
+    const pipeline: any[] = [
+      { $match: { flagship: flagshipObjectId } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: false,
+        },
+      },
+    ];
 
-    const registrations = await query.exec();
+    const trimmedSearch = (search || '').trim();
+    if (trimmedSearch.length > 0) {
+      pipeline.push({
+        $match: {
+          'user.fullName': { $regex: trimmedSearch, $options: 'i' },
+        },
+      });
+    }
 
-    return registrations;
+    pipeline.push({
+      $match: {
+        $or: [
+          { latestPaymentStatus: { $in: ['none', 'rejected'] } },
+          { latestPaymentStatus: { $exists: false } },
+        ],
+      },
+    });
+
+    const verificationFilter = filters?.verificationStatus?.toLowerCase();
+    const statusMatch = parseStatus(verificationFilter ?? undefined);
+    if (statusMatch) {
+      pipeline.push({
+        $match: {
+          'user.verification.status': statusMatch,
+        },
+      });
+    }
+
+    const excludeStatuses =
+      filters?.excludeVerificationStatus
+        ?.split(',')
+        .map((value) => parseStatus(value))
+        .filter((value): value is VerificationStatus => Boolean(value)) || [];
+    if (excludeStatuses.length > 0) {
+      pipeline.push({
+        $match: {
+          'user.verification.status': { $nin: excludeStatuses },
+        },
+      });
+    }
+
+    if (filters?.rejectedOnly) {
+      pipeline.push({
+        $match: {
+          status: 'waitlisted',
+          waitlistOfferStatus: 'rejected',
+        },
+      });
+    }
+
+    pipeline.push({ $sort: { createdAt: -1 } });
+    if (skip !== undefined) {
+      pipeline.push({ $skip: skip });
+    }
+    if (limit !== undefined) {
+      pipeline.push({ $limit: limit });
+    }
+
+    return this.registerationModel.aggregate(pipeline).exec();
   }
 
   async findPendingVerificationUsers(
     id: string,
     options?: { limit?: number; page?: number },
   ) {
-    const verificationStatuses = [VerificationStatus.PENDING];
-
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
     const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : undefined;
     const page = options?.page && options.page > 1 ? options.page : 1;
     const skip = limit ? (page - 1) * limit : undefined;
 
-    const query = this.registerationModel
-      .find({ flagship: id })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: 'user',
-        model: 'User',
-        match: { 'verification.status': { $in: verificationStatuses } },
-        select: '_id fullName city verification',
-      })
-      .lean();
+    const flagshipObjectId = new Types.ObjectId(id);
+    const pipeline: any[] = [
+      { $match: { flagship: flagshipObjectId } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: false,
+        },
+      },
+      {
+        $match: {
+          'user.verification.status': VerificationStatus.PENDING,
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ];
 
-    if (limit) query.limit(limit);
-    if (skip) query.skip(skip);
+    if (skip !== undefined) {
+      pipeline.push({ $skip: skip });
+    }
+    if (limit !== undefined) {
+      pipeline.push({ $limit: limit });
+    }
 
-    const registrations = await query.exec();
+    return this.registerationModel.aggregate(pipeline).exec();
+  }
 
-    const filteredRegistrations = registrations.filter(
-      (registration) => registration.user !== null,
+  async findPendingPaymentVerifications(
+    id: string,
+    options?: { limit?: number; page?: number; paymentType?: string },
+  ) {
+    const limit = Math.max(1, Math.min(200, options?.limit && options.limit > 0 ? options.limit : 20));
+    const page = options?.page && options.page > 1 ? options.page : 1;
+    const skip = (page - 1) * limit;
+
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
+    const flagshipObjectId = new Types.ObjectId(id);
+
+    const pipeline: any[] = [
+      { $match: { status: 'pendingApproval' } },
+      {
+        $lookup: {
+          from: 'registrations',
+          localField: 'registration',
+          foreignField: '_id',
+          as: 'registration',
+        },
+      },
+      { $unwind: '$registration' },
+      { $match: { 'registration.flagship': flagshipObjectId } },
+    ];
+
+    if (options?.paymentType) {
+      pipeline.push({ $match: { paymentType: options.paymentType } });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$registration._id',
+          payment: { $first: '$$ROOT' },
+        },
+      },
+      { $replaceRoot: { newRoot: '$payment' } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'registration.user',
+          foreignField: '_id',
+          as: 'registration_user',
+        },
+      },
+      {
+        $unwind: {
+          path: '$registration_user',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          registration: {
+            $mergeObjects: [
+              '$registration',
+              {
+                user: {
+                  $ifNull: ['$registration_user', '$registration.user'],
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $project: {
+          registration_user: 0,
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          results: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'count' }],
+        },
+      },
     );
 
-    return filteredRegistrations;
+    const aggregateResult = (await this.paymentModel.aggregate(pipeline).exec()) || [];
+    const facet = aggregateResult[0] || { results: [], total: [{ count: 0 }] };
+    const payments = facet.results || [];
+    const total = Number(facet.total?.[0]?.count || 0);
+
+    return {
+      payments,
+      page,
+      limit,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+    };
   }
 
   async findPaidUsers(

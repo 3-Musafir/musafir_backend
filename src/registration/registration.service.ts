@@ -18,6 +18,15 @@ import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 
+export interface CreateRegistrationResult {
+  registrationId: string;
+  message: string;
+  alreadyRegistered?: boolean;
+  isPaid?: boolean;
+  status?: string;
+  amountDue?: number;
+}
+
 @Injectable()
 export class RegistrationService {
   constructor(
@@ -458,7 +467,7 @@ export class RegistrationService {
     });
   }
 
-  async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<{ registrationId: string, message: string }> {
+  async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<CreateRegistrationResult> {
     try {
       const user = await this.userModel.findById(userId);
       if (!user) {
@@ -489,20 +498,6 @@ export class RegistrationService {
           isPaid: Boolean(existing.isPaid),
           status: existing.status,
           amountDue: existing.amountDue ?? 0,
-        };
-      }
-
-      const existing = await this.registrationModel.findOne({
-        userId,
-        flagship: registration.flagshipId,
-        cancelledAt: { $exists: false },
-        refundStatus: { $ne: 'refunded' },
-      }).select('_id').lean().exec();
-
-      if (existing) {
-        return {
-          registrationId: String(existing._id),
-          message: 'You already have a registration for this flagship.',
         };
       }
 
@@ -564,9 +559,9 @@ export class RegistrationService {
       }
 
       return {
-        registrationId: createdRegistration._id,
-        message: "Registration created successfully."
-      }
+        registrationId: String(createdRegistration._id),
+        message: 'Registration created successfully.',
+      };
     } catch (error) {
       console.error('Registration error:', error);
       throw error;

@@ -201,9 +201,18 @@ export class FlagshipController {
     @Query('search') search: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
+    @Query('verificationStatus') verificationStatus?: string,
+    @Query('rejectedOnly') rejectedOnly?: string,
+    @Query('excludeVerificationStatus') excludeVerificationStatus?: string,
   ) {
     const pagination = parsePagination(limit, page);
-    return this.flagshipService.findRegisteredUsers(id, search, pagination);
+    const filters = {
+      ...pagination,
+      verificationStatus: verificationStatus || 'all',
+      rejectedOnly: rejectedOnly === 'true',
+      excludeVerificationStatus,
+    };
+    return this.flagshipService.findRegisteredUsers(id, search, filters);
   }
 
   @Get('pending-verification/:id')
@@ -219,6 +228,25 @@ export class FlagshipController {
   ) {
     const pagination = parsePagination(limit, page);
     return this.flagshipService.findPendingVerificationUsers(id, pagination);
+  }
+
+  @Get('pending-payment-verification/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get payments pending approval for a flagship' })
+  @ApiOkResponse({})
+  findPendingPaymentVerifications(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+    @Query('paymentType') paymentType?: string,
+  ) {
+    const pagination = parsePagination(limit, page);
+    return this.flagshipService.findPendingPaymentVerifications(id, {
+      ...pagination,
+      paymentType,
+    });
   }
 
   @Get('paid/:id')

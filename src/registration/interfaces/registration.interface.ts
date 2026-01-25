@@ -13,6 +13,10 @@ export class Registration {
   readonly flagship: Flagship;
   readonly paymentId?: string;
   readonly payment?: Payment;
+  readonly latestPaymentId?: string;
+  readonly latestPaymentStatus?: 'pendingApproval' | 'approved' | 'rejected' | 'none';
+  readonly latestPaymentCreatedAt?: Date;
+  readonly latestPaymentType?: string;
   readonly isPaid?: boolean;
   readonly joiningFromCity?: string;
   readonly tier?: string;

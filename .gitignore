@@ -132,6 +132,12 @@ typings/
 # DynamoDB Local files
 .dynamodb/
 
+# Temporary/test artifacts
+tmp_test*
+*.tmp
+tmp/
+test-output/
+
 # End of https://www.gitignore.io/api/node,linux
 dist/
 

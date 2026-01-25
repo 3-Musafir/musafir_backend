@@ -15,6 +15,7 @@ import { Refund } from './schema/refund.schema';
 import { Registration } from 'src/registration/interfaces/registration.interface';
 import { MailService } from 'src/mail/mail.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { ensureUserVerifiedForPayment } from './payment-validation';
 import { NotificationService } from 'src/notifications/notification.service';
 import { computeRefundQuote } from './refund-policy.util';
 import { RefundSettlementService } from 'src/refund-settlement/refund-settlement.service';
@@ -43,25 +44,8 @@ export class PaymentService {
     private readonly refundSettlementService: RefundSettlementService,
   ) { }
 
-  private assertUserVerifiedForPayment(user: User) {
-    const status = (user as any)?.verification?.status;
-    if (status === VerificationStatus.VERIFIED) return;
-    if (status === VerificationStatus.PENDING) {
-      throw new BadRequestException({
-        message: 'Verification is pending. Please wait for approval before making a payment.',
-        code: 'verification_pending',
-      });
-    }
-    if (status === VerificationStatus.REJECTED) {
-      throw new BadRequestException({
-        message: 'Verification was rejected. Please re-apply before making a payment.',
-        code: 'verification_rejected',
-      });
-    }
-    throw new BadRequestException({
-      message: 'Verification required before making a payment.',
-      code: 'verification_required',
-    });
+  private assertUserVerifiedForPayment(user: User): void {
+    ensureUserVerifiedForPayment(user);
   }
 
   private async updateUserTripStats(userId: string): Promise<void> {
@@ -1002,6 +986,10 @@ export class PaymentService {
           {
             paymentId: savedPayment._id,
             payment: savedPayment._id,
+            latestPaymentId: savedPayment._id,
+            latestPaymentStatus: 'pendingApproval',
+            latestPaymentCreatedAt: savedPayment.createdAt,
+            latestPaymentType: savedPayment.paymentType,
           },
         );
 
@@ -1058,15 +1046,19 @@ export class PaymentService {
           const registration = await this.registrationModel.findById(
             createPaymentDto.registration,
           );
-          if (registration) {
-            await this.registrationModel.findByIdAndUpdate(
-              createPaymentDto.registration,
-              {
-                paymentId: savedPayment._id,
-                payment: savedPayment._id,
-              },
-            );
-          }
+            if (registration) {
+              await this.registrationModel.findByIdAndUpdate(
+                createPaymentDto.registration,
+                {
+                  paymentId: savedPayment._id,
+                  payment: savedPayment._id,
+                  latestPaymentId: savedPayment._id,
+                  latestPaymentStatus: 'pendingApproval',
+                  latestPaymentCreatedAt: savedPayment.createdAt,
+                  latestPaymentType: savedPayment.paymentType,
+                },
+              );
+            }
         }
       }
 
@@ -1169,7 +1161,7 @@ export class PaymentService {
         registrationUserId = regUserId.toString();
         registrationUser = await this.user.findById(regUserId);
         if (registrationUser) {
-          this.assertUserVerifiedForPayment(registrationUser);
+          ensureUserVerifiedForPayment(registrationUser);
         }
       }
     }
@@ -1339,6 +1331,10 @@ export class PaymentService {
           seatLockedAt: new Date(),
           payment: payment._id,
           paymentId: payment._id,
+          latestPaymentId: payment._id,
+          latestPaymentStatus: 'approved',
+          latestPaymentCreatedAt: payment.createdAt,
+          latestPaymentType: payment.paymentType,
         };
         if (walletToApply > 0) {
           registrationUpdate.walletPaid = Math.max(
@@ -1466,6 +1462,10 @@ export class PaymentService {
         isPaid: false,
         paymentId: null,
         payment: null,
+        latestPaymentId: payment._id,
+        latestPaymentStatus: 'rejected',
+        latestPaymentCreatedAt: payment.createdAt,
+        latestPaymentType: payment.paymentType,
       });
 
       // Notify user about rejection (in-app always, email when available).
