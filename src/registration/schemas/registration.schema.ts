@@ -15,6 +15,14 @@ export const RegistrationSchema = new Schema(
     flagship: { type: Schema.Types.ObjectId, ref: 'Flagship', required: true },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment', required: false, default: null },
     payment: { type: Schema.Types.ObjectId, ref: 'Payment', required: false, default: null },
+    latestPaymentId: { type: Schema.Types.ObjectId, ref: 'Payment', required: false, default: null },
+    latestPaymentStatus: {
+      type: String,
+      enum: ['pendingApproval', 'approved', 'rejected', 'none'],
+      default: 'none',
+    },
+    latestPaymentCreatedAt: { type: Date, required: false },
+    latestPaymentType: { type: String, required: false },
     isPaid: { type: Boolean, required: false, default: false },
     joiningFromCity: { type: String, required: false },
     tier: { type: String, required: false },
@@ -54,3 +62,4 @@ export const RegistrationSchema = new Schema(
 RegistrationSchema.index({ userId: 1, flagship: 1 });
 RegistrationSchema.index({ flagship: 1, status: 1, waitlistAt: 1 });
 RegistrationSchema.index({ userId: 1, flagship: 1, cancelledAt: 1 });
+RegistrationSchema.index({ flagship: 1, createdAt: -1 });
