@@ -275,6 +275,19 @@ export class FlagshipController {
     return this.flagshipService.getRegisterationStats(id);
   }
 
+  @Post('payment-reminders/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send payment reminders for a flagship' })
+  @ApiOkResponse({})
+  sendPaymentReminders(
+    @Param('id') id: string,
+    @Body() body: { registrationIds?: string[] },
+  ) {
+    return this.flagshipService.sendPaymentReminders(id, body?.registrationIds);
+  }
+
   @Get('payment-stats/:id')
   @UseGuards(JwtAuthGuard)
   @Roles('admin')

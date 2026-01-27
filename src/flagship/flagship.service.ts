@@ -681,6 +681,148 @@ export class FlagshipService {
     return registration;
   }
 
+  async sendPaymentReminders(flagshipId: string, registrationIds?: string[]) {
+    if (!Types.ObjectId.isValid(flagshipId)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
+
+    const now = new Date();
+    const cooldownCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const flagshipObjectId = new Types.ObjectId(flagshipId);
+
+    const filter: Record<string, any> = {
+      flagship: flagshipObjectId,
+      cancelledAt: { $exists: false },
+      refundStatus: { $nin: ['pending', 'processing', 'refunded'] },
+      status: { $in: ['payment', 'onboarding', 'new'] },
+      isPaid: { $ne: true },
+      amountDue: { $gt: 0 },
+      latestPaymentStatus: { $nin: ['pendingApproval', 'approved'] },
+      $or: [
+        { lastPaymentReminderAt: { $exists: false } },
+        { lastPaymentReminderAt: { $lte: cooldownCutoff } },
+      ],
+    };
+
+    if (Array.isArray(registrationIds) && registrationIds.length > 0) {
+      const validIds = registrationIds
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+      if (validIds.length === 0) {
+        throw new BadRequestException('No valid registration IDs provided.');
+      }
+      filter._id = { $in: validIds };
+    }
+
+    const registrations = await this.registerationModel
+      .find(filter)
+      .populate({
+        path: 'user',
+        select: '_id fullName email verification',
+      })
+      .populate({
+        path: 'flagship',
+        select: 'tripName',
+      })
+      .lean()
+      .exec();
+
+    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const result = {
+      totalEligible: registrations.length,
+      notificationsSent: 0,
+      emailsSent: 0,
+      skipped: 0,
+    };
+    const updatedIds: Types.ObjectId[] = [];
+    const batchSize = 10;
+
+    const sendReminder = async (registration: any) => {
+      const user = registration?.user;
+      const userId = user?._id?.toString?.();
+      if (!userId) {
+        result.skipped += 1;
+        return;
+      }
+
+      const tripName =
+        (registration?.flagship as any)?.tripName || 'your trip';
+      const registrationId = registration?._id?.toString?.();
+      const paymentPath = registrationId
+        ? `/musafir/payment/${registrationId}`
+        : '/passport';
+      const paymentLink = frontendBase
+        ? `${frontendBase}${paymentPath}`
+        : paymentPath;
+      const verificationStatus = String(user?.verification?.status || '').toLowerCase();
+      const needsVerification = verificationStatus !== VerificationStatus.VERIFIED;
+
+      let sent = false;
+
+      try {
+        await this.notificationService.createForUser(userId, {
+          title: needsVerification
+            ? 'Complete verification to pay'
+            : 'Payment reminder',
+          message: needsVerification
+            ? `Complete verification to proceed with payment for ${tripName}.`
+            : `Please complete your payment for ${tripName}.`,
+          type: 'payment',
+          link: paymentPath,
+          metadata: {
+            kind: 'payment_reminder',
+            registrationId,
+            flagshipId: String(flagshipId),
+            needsVerification,
+          },
+        });
+        result.notificationsSent += 1;
+        sent = true;
+      } catch (error) {
+        console.log('Failed to send payment reminder notification:', error);
+      }
+
+      if (user?.email) {
+        try {
+          await this.mailService.sendPaymentReminderEmail(
+            user.email,
+            user.fullName || 'Musafir',
+            tripName,
+            paymentLink,
+            needsVerification,
+          );
+          result.emailsSent += 1;
+          sent = true;
+        } catch (error) {
+          console.log('Failed to send payment reminder email:', error);
+        }
+      }
+
+      if (sent && registration?._id) {
+        updatedIds.push(registration._id as Types.ObjectId);
+      } else if (!sent) {
+        result.skipped += 1;
+      }
+    };
+
+    for (let i = 0; i < registrations.length; i += batchSize) {
+      const batch = registrations.slice(i, i + batchSize);
+      await Promise.all(batch.map((registration) => sendReminder(registration)));
+    }
+
+    if (updatedIds.length > 0) {
+      await this.registerationModel.updateMany(
+        { _id: { $in: updatedIds } },
+        { $set: { lastPaymentReminderAt: now } },
+      );
+    }
+
+    return {
+      ...result,
+      updated: updatedIds.length,
+    };
+  }
+
   async getRegisterationStats(id: string) {
     const flagship = await this.flagshipModel.findById(id);
     if (!flagship) {

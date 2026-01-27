@@ -23,6 +23,7 @@ export const RegistrationSchema = new Schema(
     },
     latestPaymentCreatedAt: { type: Date, required: false },
     latestPaymentType: { type: String, required: false },
+    lastPaymentReminderAt: { type: Date, required: false },
     isPaid: { type: Boolean, required: false, default: false },
     joiningFromCity: { type: String, required: false },
     tier: { type: String, required: false },

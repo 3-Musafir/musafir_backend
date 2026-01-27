@@ -17,6 +17,7 @@ export class Registration {
   readonly latestPaymentStatus?: 'pendingApproval' | 'approved' | 'rejected' | 'none';
   readonly latestPaymentCreatedAt?: Date;
   readonly latestPaymentType?: string;
+  readonly lastPaymentReminderAt?: Date;
   readonly isPaid?: boolean;
   readonly joiningFromCity?: string;
   readonly tier?: string;

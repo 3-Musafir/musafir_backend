@@ -210,7 +210,8 @@ export class MailService {
       return true;
     } catch (error) {
       console.log('Error sending verification approved email:', error);
-    return error;
+      return error;
+    }
   }
 
   async sendPaymentSubmissionEmail(
@@ -240,6 +241,34 @@ export class MailService {
       return error;
     }
   }
+
+  async sendPaymentReminderEmail(
+    email: string,
+    fullName: string,
+    tripName: string,
+    paymentLink: string,
+    needsVerification: boolean,
+  ) {
+    try {
+      const subject = needsVerification
+        ? `Complete verification to pay for ${tripName}`
+        : `Payment reminder for ${tripName}`;
+      await this.sendMail(
+        email,
+        subject,
+        './payment-reminder',
+        {
+          fullName,
+          tripName,
+          paymentLink,
+          needsVerification,
+        },
+      );
+      return true;
+    } catch (error) {
+      console.log('Error sending payment reminder email:', error);
+      return error;
+    }
   }
 
   async sendVerificationRejectedEmail(

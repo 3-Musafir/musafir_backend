@@ -1,0 +1,9 @@
+<p>Hi {{fullName}},</p>
+<p>This is a reminder to complete your payment for <strong>{{tripName}}</strong>.</p>
+{{#if needsVerification}}
+<p>Please complete your identity verification before making a payment.</p>
+{{/if}}
+{{#if paymentLink}}
+<p><a href="{{paymentLink}}" style="color:#1d4ed8; text-decoration:none; font-weight:bold;">Open your flagship payment page</a></p>
+{{/if}}
+<p>If you have already paid, please ignore this message.</p>
