@@ -82,6 +82,30 @@ export class PaymentController {
     return this.paymentService.getCompletedPayments();
   }
 
+  @Get('user-payments')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get my payments (pending/approved)' })
+  @ApiOkResponse({})
+  async getUserPayments(
+    @GetUser() user: User,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const userId = user?._id?.toString?.();
+    if (!userId) {
+      throw new BadRequestException({
+        message: 'Authentication required.',
+        code: 'payment_wallet_auth_required',
+      });
+    }
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.paymentService.findPaymentsByUser(userId, {
+      limit: parsedLimit,
+      cursor,
+    });
+  }
+
   @Post('create-bank-account')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create Bank Account' })

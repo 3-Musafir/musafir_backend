@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model } from 'mongoose';
+import mongoose, { Model, Types } from 'mongoose';
 import { BankAccount, Payment } from './interface/payment.interface';
 import {
   CreateBankAccountDto,
@@ -344,6 +344,58 @@ export class PaymentService {
     }
 
     return payment;
+  }
+
+  async findPaymentsByUser(
+    userId: string,
+    options?: { limit?: number; cursor?: string },
+  ) {
+    const limit =
+      options?.limit && Number(options.limit) > 0
+        ? Math.min(100, Number(options.limit))
+        : 20;
+    const registrationIds = await this.registrationModel
+      .distinct('_id', {
+        $or: [{ user: new Types.ObjectId(userId) }, { userId: new Types.ObjectId(userId) }],
+      })
+      .exec();
+    if (!registrationIds || registrationIds.length === 0) {
+      return { payments: [], nextCursor: null };
+    }
+
+    const match: any = {
+      registration: { $in: registrationIds },
+    };
+
+    if (options?.cursor) {
+      match._id = { $lt: options.cursor };
+    }
+
+    const payments = await this.paymentModel
+      .find(match)
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
+      .populate({
+        path: 'registration',
+        populate: {
+          path: 'flagship',
+          model: 'Flagship',
+          select: 'tripName slug',
+        },
+      })
+      .lean()
+      .exec();
+
+    const hasMore = payments.length > limit;
+    if (hasMore) payments.pop();
+    const nextCursor = hasMore
+      ? payments[payments.length - 1]._id?.toString?.() ?? null
+      : null;
+
+    return {
+      payments,
+      nextCursor,
+    };
   }
 
   async createBankAccount(
