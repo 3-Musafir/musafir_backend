@@ -210,8 +210,36 @@ export class MailService {
       return true;
     } catch (error) {
       console.log('Error sending verification approved email:', error);
+    return error;
+  }
+
+  async sendPaymentSubmissionEmail(
+    email: string,
+    fullName: string,
+    tripName: string,
+    amount: number,
+    paymentType: string,
+    paymentLink?: string,
+  ) {
+    try {
+      await this.sendMail(
+        email,
+        'Payment received — pending review',
+        './payment-submitted',
+        {
+          fullName,
+          tripName,
+          amount,
+          paymentType,
+          paymentLink,
+        },
+      );
+      return true;
+    } catch (error) {
+      console.log('Error sending payment submission email:', error);
       return error;
     }
+  }
   }
 
   async sendVerificationRejectedEmail(

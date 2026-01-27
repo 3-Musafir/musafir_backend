@@ -744,6 +744,16 @@ export class PaymentService {
     if (!registration) {
       throw new Error('Registration not found');
     }
+    const flagshipId = (registration as any).flagship || (registration as any).flagshipId;
+    let flagshipName: string | null = null;
+    if (flagshipId) {
+      const flagshipDoc = await this.flagshipModel
+        .findById(flagshipId)
+        .select('tripName')
+        .lean()
+        .exec();
+      flagshipName = flagshipDoc?.tripName || null;
+    }
 
     const lastPayment = await this.paymentModel
       .findOne({ registration: createPaymentDto.registration })
@@ -836,13 +846,62 @@ export class PaymentService {
       this.assertUserVerifiedForPayment(registrationUser);
     }
 
+    const notifyUserPaymentSubmitted = async (paymentDoc: any) => {
+      const userId =
+        registrationUser?._id?.toString?.() ||
+        registrationUserId?.toString?.();
+      if (!userId) {
+        return;
+      }
+      const registrationIdString =
+        (registration as any)?._id?.toString?.() || createPaymentDto.registration;
+      const link = registrationIdString
+        ? `/musafir/payment/${registrationIdString}`
+        : '/passport';
+      const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+      const absoluteLink =
+        registrationIdString && frontendBase
+          ? `${frontendBase}/musafir/payment/${registrationIdString}`
+          : link;
+      const walletAmount = Number(paymentDoc.walletRequested) || 0;
+      const totalPaid =
+        Math.max(0, Number(paymentDoc.amount) || 0) + walletAmount;
+      try {
+        await this.notificationService.createForUser(userId, {
+          title: 'Payment submitted',
+          message: `We received Rs.${totalPaid.toLocaleString()} for ${flagshipName || 'your trip'}.`,
+          type: 'payment',
+          link,
+          metadata: {
+            paymentId: paymentDoc._id?.toString?.(),
+            registrationId: registrationIdString,
+            amount: totalPaid,
+            paymentMethod: paymentDoc.paymentMethod,
+            paymentType: paymentDoc.paymentType,
+          },
+        });
+      } catch (error) {
+        console.log('Failed to send payment submitted notification:', error);
+      }
+      if (registrationUser?.email) {
+        try {
+          await this.mailService.sendPaymentSubmissionEmail(
+            registrationUser.email,
+            registrationUser.fullName || 'Musafir',
+            flagshipName || 'your trip',
+            totalPaid,
+            paymentDoc.paymentType || 'payment',
+            absoluteLink,
+          );
+        } catch (error) {
+          console.log('Failed to send payment submission email:', error);
+        }
+      }
+    };
+
     const notifyAdminOnReupload = async (paymentDoc: any) => {
       if (!isReupload || !paymentDoc?._id) return;
       try {
-        const flagshipId = (registration as any).flagship || (registration as any).flagshipId;
-        const flagship = flagshipId
-          ? await this.flagshipModel.findById(flagshipId).select('tripName').lean().exec()
-          : null;
         const adminUrl =
           process.env.FRONTEND_URL && paymentDoc?._id
             ? `${process.env.FRONTEND_URL}/admin/payment/${paymentDoc._id.toString()}`
@@ -852,7 +911,7 @@ export class PaymentService {
           paymentId: paymentDoc._id.toString(),
           registrationId: createPaymentDto.registration,
           flagshipId: flagshipId?.toString?.(),
-          flagshipName: flagship?.tripName,
+          flagshipName,
           userId: registrationUser?._id?.toString?.() || registrationUserId?.toString?.(),
           userName: registrationUser?.fullName,
           userEmail: registrationUser?.email,
@@ -993,6 +1052,7 @@ export class PaymentService {
           },
         );
 
+        await notifyUserPaymentSubmitted(savedPayment);
         await notifyAdminOnReupload(savedPayment);
 
         return {
@@ -1062,6 +1122,7 @@ export class PaymentService {
         }
       }
 
+      await notifyUserPaymentSubmitted(savedPayment);
       await notifyAdminOnReupload(savedPayment);
 
       return savedPayment;
