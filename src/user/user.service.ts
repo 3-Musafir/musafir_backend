@@ -1196,6 +1196,7 @@ export class UserService {
     userId: string,
     status: VerificationStatus,
     comment?: string,
+    options?: { registrationId?: string },
   ) {
     const user = await this.userModel.findById(userId);
     if (!user) {
@@ -1234,11 +1235,24 @@ export class UserService {
       await this.promoteUserRegistrationsToPayment(savedUser._id.toString());
     }
 
+    const registrationId = options?.registrationId;
+    const relativePaymentLink = registrationId
+      ? `/musafir/payment/${registrationId}`
+      : undefined;
+    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const absolutePaymentLink =
+      registrationId && frontendBase
+        ? `${frontendBase}/musafir/payment/${registrationId}`
+        : registrationId
+          ? `/musafir/payment/${registrationId}`
+          : undefined;
+
     if (status === VerificationStatus.VERIFIED && user.email) {
       try {
         await this.mailService.sendVerificationApprovedEmail(
           user.email,
-          user.fullName || 'Musafir'
+          user.fullName || 'Musafir',
+          { paymentLink: absolutePaymentLink },
         );
       } catch (error) {
         console.log('Failed to send verification approved email:', error);
@@ -1246,13 +1260,24 @@ export class UserService {
     }
 
     try {
+      const notificationOptions: {
+        comment?: string;
+        link?: string;
+        metadata?: Record<string, any>;
+      } = {
+        comment,
+        metadata: {
+          source: 'admin_override',
+          ...(registrationId ? { registrationId } : {}),
+        },
+      };
+      if (status === VerificationStatus.VERIFIED && relativePaymentLink) {
+        notificationOptions.link = relativePaymentLink;
+      }
       await this.notificationService.ensureVerificationStatusNotification(
         userId,
         status,
-        {
-          comment,
-          metadata: { source: 'admin_override' },
-        },
+        notificationOptions,
       );
     } catch (error) {
       console.log('Failed to send verification status notification:', error);

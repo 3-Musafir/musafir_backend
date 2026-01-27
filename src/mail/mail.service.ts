@@ -192,7 +192,11 @@ export class MailService {
     }
   }
 
-  async sendVerificationApprovedEmail(email: string, fullName: string) {
+  async sendVerificationApprovedEmail(
+    email: string,
+    fullName: string,
+    options?: { paymentLink?: string },
+  ) {
     try {
       await this.sendMail(
         email,
@@ -200,6 +204,7 @@ export class MailService {
         './verification-approved',
         {
           fullName: fullName,
+          paymentLink: options?.paymentLink,
         },
       );
       return true;

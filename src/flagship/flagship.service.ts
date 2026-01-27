@@ -501,7 +501,9 @@ export class FlagshipService {
       },
       {
         $match: {
-          'user.verification.status': VerificationStatus.PENDING,
+          'user.verification.status': {
+            $in: [VerificationStatus.PENDING, VerificationStatus.UNVERIFIED],
+          },
         },
       },
       { $sort: { createdAt: -1 } },
@@ -850,11 +852,12 @@ export class FlagshipService {
     });
   }
 
-  async verifyUser(id: string, comment: string) {
+  async verifyUser(id: string, comment?: string, registrationId?: string) {
     return this.userService.updateVerificationStatus(
       id,
       VerificationStatus.VERIFIED,
       comment,
+      { registrationId },
     );
   }
 

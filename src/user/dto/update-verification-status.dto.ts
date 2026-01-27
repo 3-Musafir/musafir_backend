@@ -17,4 +17,12 @@ export class UpdateVerificationStatusDto {
   @IsOptional()
   @IsString()
   comment?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Registration ID to build a deep link for the user',
+  })
+  @IsOptional()
+  @IsString()
+  registrationId?: string;
 }

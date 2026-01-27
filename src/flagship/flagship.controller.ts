@@ -337,8 +337,11 @@ export class FlagshipController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'verify user' })
   @ApiOkResponse({})
-  verifyUser(@Param('userID') id: string, @Body('comment') comment: string) {
-    return this.flagshipService.verifyUser(id, comment);
+  verifyUser(
+    @Param('userID') id: string,
+    @Body() body: { comment?: string; registrationId?: string },
+  ) {
+    return this.flagshipService.verifyUser(id, body.comment, body.registrationId);
   }
 
   @Patch('reject-verification/:userID')

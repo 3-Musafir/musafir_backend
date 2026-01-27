@@ -359,6 +359,7 @@ export class UserController {
         id,
         body.status,
         body.comment,
+        { registrationId: body.registrationId },
       );
       return successResponse(
         updatedUser,
