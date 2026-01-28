@@ -1280,10 +1280,42 @@ export class PaymentService {
     }
 
     if (registration) {
+      const latestPaymentId =
+        registration?.latestPaymentId?.toString?.() || String(registration?.latestPaymentId || '');
+      const currentPaymentId = payment._id?.toString?.() || String(payment._id);
+      const latestStatus = String((registration as any)?.latestPaymentStatus || '');
+      const regStatus = String((registration as any)?.status || '');
+      const regSeatLocked = Boolean((registration as any)?.seatLocked);
+      const regPaid = Boolean((registration as any)?.isPaid);
+      if (latestPaymentId && currentPaymentId && latestPaymentId === currentPaymentId
+        && latestStatus === 'approved'
+        && regStatus === 'confirmed'
+        && regSeatLocked
+        && regPaid) {
+        // Registration already reflects approval for this payment, so we skip wallet/registration
+        // mutations and just align the payment record itself.
+        payment.status = 'approved';
+        const requestedWallet =
+          typeof (payment as any)?.walletRequested === 'number'
+            ? (payment as any).walletRequested
+            : 0;
+        const appliedWallet =
+          typeof (payment as any)?.walletApplied === 'number'
+            ? (payment as any).walletApplied
+            : 0;
+        if (requestedWallet > 0 && appliedWallet < requestedWallet) {
+          payment.walletApplied = requestedWallet;
+        }
+        await payment.save();
+        return payment;
+      }
+    }
+
+    if (registration) {
       const currentAmountDue =
         typeof registration.amountDue === 'number'
           ? registration.amountDue
-          : typeof registration.price === 'number'
+        : typeof registration.price === 'number'
             ? registration.price
             : 0;
       if (currentAmountDue <= 0) {
@@ -1334,10 +1366,31 @@ export class PaymentService {
             });
           }
           if (!payment.walletDebitId) {
-            payment.walletDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
+            const newDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
               .toString(36)
               .slice(2, 8)}`;
-            await payment.save();
+            const updated = await this.paymentModel.findOneAndUpdate(
+              {
+                _id: payment._id,
+                $or: [
+                  { walletDebitId: { $exists: false } },
+                  { walletDebitId: null },
+                  { walletDebitId: '' },
+                ],
+              },
+              { $set: { walletDebitId: newDebitId } },
+              { new: true },
+            );
+            if (updated?.walletDebitId) {
+              payment.walletDebitId = updated.walletDebitId as string;
+            } else {
+              const latest = await this.paymentModel
+                .findById(payment._id)
+                .select('walletDebitId')
+                .lean()
+                .exec();
+              payment.walletDebitId = (latest as any)?.walletDebitId || newDebitId;
+            }
           }
           walletSourceId = payment.walletDebitId;
           try {
@@ -1356,11 +1409,14 @@ export class PaymentService {
           } catch (err: any) {
             const code = err?.response?.data?.code || err?.code || err?.message;
             if (code === 'wallet_tx_void') {
-              payment.walletDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
+              const newDebitId = `payment:${payment._id.toString()}:${Date.now()}:${Math.random()
                 .toString(36)
                 .slice(2, 8)}`;
-              await payment.save();
-              walletSourceId = payment.walletDebitId;
+              await this.paymentModel.findByIdAndUpdate(payment._id, {
+                walletDebitId: newDebitId,
+              });
+              payment.walletDebitId = newDebitId;
+              walletSourceId = newDebitId;
               walletTx = await this.walletService.debit({
                 userId: registrationUserId,
                 amount: walletToApply,
@@ -1377,7 +1433,34 @@ export class PaymentService {
               throw err;
             }
           }
-          walletDebited = !isWalletTxIdempotent(walletTx);
+          const idempotentWalletTx = isWalletTxIdempotent(walletTx);
+          walletDebited = !idempotentWalletTx;
+          if (idempotentWalletTx) {
+            const refreshed = await this.registrationModel
+              .findById(registration._id)
+              .select('latestPaymentId latestPaymentStatus status seatLocked isPaid')
+              .lean()
+              .exec();
+            const refreshedLatestId =
+              (refreshed as any)?.latestPaymentId?.toString?.() ||
+              String((refreshed as any)?.latestPaymentId || '');
+            const refreshedStatus = String((refreshed as any)?.latestPaymentStatus || '');
+            const refreshedRegStatus = String((refreshed as any)?.status || '');
+            const refreshedSeatLocked = Boolean((refreshed as any)?.seatLocked);
+            const refreshedPaid = Boolean((refreshed as any)?.isPaid);
+            if (refreshedLatestId && refreshedLatestId === String(payment._id)
+              && refreshedStatus === 'approved'
+              && refreshedRegStatus === 'confirmed'
+              && refreshedSeatLocked
+              && refreshedPaid) {
+              payment.status = 'approved';
+              if (paymentWalletRequested > 0 && paymentWalletApplied < paymentWalletRequested) {
+                payment.walletApplied = paymentWalletRequested;
+              }
+              await payment.save();
+              return payment;
+            }
+          }
         }
 
         const updatedDiscountApplied = currentDiscountApplied + discountDelta;

@@ -157,7 +157,7 @@ export class WalletService {
         {
           $inc: { balance: reverseDelta },
           $set: { updatedAt: new Date() },
-          $setOnInsert: { userId: tx.userId, balance: 0 },
+          $setOnInsert: { userId: tx.userId },
         },
         { upsert: true },
       );
@@ -220,7 +220,7 @@ export class WalletService {
         {
           $inc: { balance: delta },
           $set: { updatedAt: new Date() },
-          $setOnInsert: { userId: params.userId, balance: 0 },
+          $setOnInsert: { userId: params.userId },
         },
         { upsert: true, new: true },
       );
