@@ -250,6 +250,7 @@ export class FlagshipService {
       'selectedBank',
       'publish',
       'status',
+      'visibility',
       'tripDates',
       'registrationDeadline',
       'advancePaymentDeadline',

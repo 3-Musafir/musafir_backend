@@ -359,6 +359,16 @@ export class UpdateFlagshipDto {
   @IsIn(['unpublished', 'published', 'completed'])
   status: string;
 
+  @ApiProperty({
+    example: 'public',
+    description: 'Controls visibility for end users',
+    enum: ['public', 'private'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['public', 'private'])
+  visibility?: string;
+
   @ApiProperty({ description: 'Trip dates (any string format)' })
   @IsOptional()
   @IsString()

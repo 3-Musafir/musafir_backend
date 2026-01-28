@@ -43,6 +43,11 @@ export class AdminWalletCreditDto {
   @IsString()
   userId: string;
 
+  @ApiProperty({ example: 'topup_2025_02_01_0001' })
+  @IsNotEmpty()
+  @IsString()
+  idempotencyKey: string;
+
   @ApiProperty({ example: 20000, enum: WALLET_TOPUP_PACKAGES_PKR })
   @Type(() => Number)
   @IsNumber()
@@ -60,6 +65,11 @@ export class AdminWalletAdjustDto {
   @IsNotEmpty()
   @IsString()
   userId: string;
+
+  @ApiProperty({ example: 'adjust_2025_02_01_0001' })
+  @IsNotEmpty()
+  @IsString()
+  idempotencyKey: string;
 
   @ApiProperty({ example: 100 })
   @Type(() => Number)

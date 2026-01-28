@@ -211,7 +211,14 @@ export class WalletService {
 
     const delta = params.direction === 'credit' ? amount : -amount;
     const sourceType = params.sourceType || params.type;
-    const metadata = { ...(params.metadata || {}), sourceId: params.sourceId };
+    const metadata = {
+      ...(params.metadata || {}),
+      sourceId: params.sourceId,
+      sourceRef: (params.metadata as any)?.sourceRef ?? params.sourceId,
+      actorId: (params.metadata as any)?.actorId ?? (params.postedBy || params.userId),
+      actorRole: (params.metadata as any)?.actorRole ?? (params.postedBy ? 'admin' : 'user'),
+      reason: (params.metadata as any)?.reason ?? (params.note || params.type),
+    };
 
     let balanceDoc: any = null;
     if (delta > 0) {

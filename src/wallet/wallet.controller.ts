@@ -100,15 +100,22 @@ export class WalletController {
   @ApiOperation({ summary: 'Admin: credit fixed top-up package' })
   @ApiOkResponse({})
   adminTopup(@GetUser() admin: User, @Body() body: AdminWalletCreditDto) {
+    const idempotencyKey = body.idempotencyKey?.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException({
+        message: 'Idempotency key is required.',
+        code: 'wallet_idempotency_required',
+      });
+    }
     return this.walletService.credit({
       userId: body.userId,
       amount: body.amount,
       type: 'topup',
       sourceType: 'topup_manual',
-      sourceId: `topup_manual:${body.userId}:${body.amount}:${Date.now()}`,
+      sourceId: `topup_manual:${idempotencyKey}`,
       postedBy: String(admin?._id || ''),
       note: body.note,
-      metadata: { packageAmount: body.amount },
+      metadata: { packageAmount: body.amount, sourceRef: idempotencyKey },
     });
   }
 
@@ -117,15 +124,23 @@ export class WalletController {
   @ApiOperation({ summary: 'Admin: manual wallet adjustment' })
   @ApiOkResponse({})
   adminAdjust(@GetUser() admin: User, @Body() body: AdminWalletAdjustDto) {
+    const idempotencyKey = body.idempotencyKey?.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException({
+        message: 'Idempotency key is required.',
+        code: 'wallet_idempotency_required',
+      });
+    }
     const direction = body.direction;
     const common = {
       userId: body.userId,
       amount: body.amount,
       type: 'manual_adjustment',
       sourceType: 'manual_adjustment',
-      sourceId: `manual_adjustment:${body.userId}:${direction}:${body.amount}:${Date.now()}`,
+      sourceId: `manual_adjustment:${idempotencyKey}`,
       postedBy: String(admin?._id || ''),
       note: body.note,
+      metadata: { direction, sourceRef: idempotencyKey },
     };
     return direction === 'credit'
       ? this.walletService.credit(common)
