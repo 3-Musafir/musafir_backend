@@ -186,6 +186,34 @@ export class PaymentService {
     const shouldPaginate =
       (Number.isFinite(pageRaw) && pageRaw > 0) ||
       (Number.isFinite(limitRaw) && limitRaw > 0);
+    const limit = Math.max(1, Math.min(100, Number.isFinite(limitRaw) ? limitRaw : 20));
+    const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+    const skip = (page - 1) * limit;
+
+    const flagshipIdRaw = query?.flagshipId;
+    let registrationIds: Types.ObjectId[] | null = null;
+    if (flagshipIdRaw) {
+      if (!Types.ObjectId.isValid(flagshipIdRaw)) {
+        throw new BadRequestException('Invalid flagship id.');
+      }
+      const distinctIds = await this.registrationModel.distinct('_id', {
+        flagship: new Types.ObjectId(flagshipIdRaw),
+      }) as (Types.ObjectId | string)[];
+      registrationIds = distinctIds
+        .map((id) => {
+          try {
+            return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((id): id is Types.ObjectId => id !== null);
+      if (registrationIds.length === 0) {
+        return shouldPaginate
+          ? { refunds: [], page, limit, total: 0, totalPages: 0 }
+          : [];
+      }
+    }
 
     const attachSettlement = async (refunds: any[]) => {
       const refundIds = refunds
@@ -212,6 +240,7 @@ export class PaymentService {
       if (group === 'pending') filter.status = 'pending';
       if (group === 'rejected') filter.status = 'rejected';
       if (group === 'approved_not_credited' || group === 'credited') filter.status = 'cleared';
+      if (registrationIds) filter.registration = { $in: registrationIds };
 
       const refunds: any[] = await this.refundModel
         .find(filter)
@@ -238,10 +267,6 @@ export class PaymentService {
       return withSettlement;
     }
 
-    const limit = Math.max(1, Math.min(100, Number.isFinite(limitRaw) ? limitRaw : 20));
-    const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
-    const skip = (page - 1) * limit;
-
     const populateRegistration = {
       path: 'registration',
       populate: [{ path: 'user' }, { path: 'flagship' }, { path: 'paymentId' }],
@@ -259,6 +284,7 @@ export class PaymentService {
       const agg = await (this.refundModel as any)
         .aggregate([
           { $match: { status: 'cleared' } },
+          ...(registrationIds ? [{ $match: { registration: { $in: registrationIds } } }] : []),
           {
             $lookup: {
               from: settlementCollection,
@@ -305,6 +331,7 @@ export class PaymentService {
     if (group === 'pending') filter.status = 'pending';
     if (group === 'rejected') filter.status = 'rejected';
     // group === 'all' => no filter
+    if (registrationIds) filter.registration = { $in: registrationIds };
 
     const [total, refunds] = await Promise.all([
       this.refundModel.countDocuments(filter).exec(),

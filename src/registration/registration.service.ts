@@ -653,12 +653,12 @@ export class RegistrationService {
         })
         .exec();
 
-      if (registration.flagship.images.length > 0) {
+      if (registration?.flagship?.images && registration.flagship.images.length > 0) {
         registration.flagship.images = await Promise.all(
           registration.flagship.images.map(async (imageKey) => {
             return await this.storageService.getSignedUrl(imageKey);
           })
-        )
+        );
       }
 
       return registration;

@@ -9,7 +9,7 @@ import {
   IsISO8601,
   IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 class LocationDto {
@@ -187,6 +187,31 @@ class DiscountsDto {
 }
 
 export class UpdateFlagshipDto {
+  @ApiProperty({ example: 'Winter Retreat', description: 'Trip name' })
+  @IsOptional()
+  @IsString()
+  tripName?: string;
+
+  @ApiProperty({ example: 'flagship', description: 'Trip category' })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiProperty({ example: 'skardu', description: 'Destination identifier' })
+  @IsOptional()
+  @IsString()
+  destination?: string;
+
+  @ApiProperty({ example: '2024-01-20', description: 'Start date (ISO)' })
+  @IsOptional()
+  @IsISO8601()
+  startDate?: string;
+
+  @ApiProperty({ example: '2024-01-25', description: 'End date (ISO)' })
+  @IsOptional()
+  @IsISO8601()
+  endDate?: string;
+
   // Pricing
   @ApiProperty({ example: '23,000 PKR', description: 'Base ticket price' })
   @IsOptional()
@@ -388,4 +413,54 @@ export class UpdateFlagshipDto {
   @IsOptional()
   @IsISO8601()
   earlyBirdDeadline?: string;
+
+  @ApiProperty({
+    example: '2024-01-31T12:00:00.000Z',
+    description: 'Last known update time for optimistic concurrency.',
+  })
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
+
+  @ApiProperty({
+    example: false,
+    description: 'Suppress user notifications for this update.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  silentUpdate?: boolean;
+
+  @ApiProperty({
+    example: ['flagship/123/image.webp'],
+    description: 'Remove existing images by storage key.',
+    type: [String],
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed;
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  })
+  @IsArray()
+  @IsString({ each: true })
+  removeImages?: string[];
+
+  @ApiProperty({
+    example: true,
+    description: 'Remove existing detailed plan document.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
+  @IsBoolean()
+  removeDetailedPlan?: boolean;
 }

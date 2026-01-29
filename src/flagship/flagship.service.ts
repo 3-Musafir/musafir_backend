@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -214,6 +215,26 @@ export class FlagshipService {
     }
   }
 
+  private async notifyFlagshipUpdated(flagship: Flagship) {
+    try {
+      const userIds = await this.registerationModel.distinct('userId', {
+        flagship: flagship['_id'],
+      });
+      if (!Array.isArray(userIds) || userIds.length === 0) return;
+      const recipientIds = userIds.map((id) => id.toString());
+
+      await this.notificationService.createForUsers(recipientIds, {
+        title: 'Trip Updated',
+        message: `${flagship.tripName} has been updated. Tap to view the latest details.`,
+        type: 'flagship',
+        link: `/flagship/details?id=${flagship['_id']}`,
+        metadata: { flagshipId: flagship['_id'] },
+      });
+    } catch (error) {
+      console.log('Failed to send flagship update notifications', error?.message || error);
+    }
+  }
+
   async update(
     id: number,
     updateFlagshipDto: UpdateFlagshipDto,
@@ -232,18 +253,40 @@ export class FlagshipService {
     updateDto: UpdateFlagshipDto,
   ): Promise<Flagship> {
     const updateData: Partial<UpdateFlagshipDto> = {};
+    const silentUpdate = Boolean(updateDto?.silentUpdate);
+    const existingFlagship = await this.flagshipModel.findById(id).exec();
+    if (!existingFlagship) {
+      throw new NotFoundException('Flagship not found');
+    }
+    if (updateDto?.updatedAt) {
+      const incoming = new Date(updateDto.updatedAt).getTime();
+      const current = new Date(existingFlagship.updatedAt).getTime();
+      if (Number.isFinite(incoming) && Number.isFinite(current) && incoming !== current) {
+        throw new ConflictException('Flagship was updated by another user. Please refresh.');
+      }
+    }
     const allowedFields: (keyof UpdateFlagshipDto)[] = [
+      'tripName',
+      'category',
+      'destination',
+      'startDate',
+      'endDate',
       'totalSeats',
       'femaleSeats',
       'maleSeats',
       'citySeats',
       'bedSeats',
       'mattressSeats',
+      'genderSplitEnabled',
+      'citySplitEnabled',
+      'mattressSplitEnabled',
+      'mattressPriceDelta',
       'roomSharingPreference',
       'tocs',
       'travelPlan',
       'locations',
       'basePrice',
+      'earlyBirdPrice',
       'mattressTiers',
       'tiers',
       'discounts',
@@ -263,13 +306,36 @@ export class FlagshipService {
       }
     });
 
+    const rawRemoveImages = (updateDto as any)?.removeImages;
+    let removeImages: string[] = [];
+    if (Array.isArray(rawRemoveImages)) {
+      removeImages = rawRemoveImages;
+    } else if (typeof rawRemoveImages === 'string') {
+      try {
+        const parsed = JSON.parse(rawRemoveImages);
+        if (Array.isArray(parsed)) {
+          removeImages = parsed;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    removeImages = removeImages.filter((key) => typeof key === 'string' && key.trim());
+    let imageKeys: string[] | null = null;
+    if (removeImages.length > 0) {
+      imageKeys = (existingFlagship.images || []).filter(
+        (key) => !removeImages.includes(key),
+      );
+      updateData['images'] = imageKeys;
+      removeImages.forEach((key) => {
+        this.storageService.deleteFile(key).catch(() => null);
+      });
+    }
+
     if (updateDto.files && updateDto.files.length > 0) {
       try {
-        const existingFlagship = await this.flagshipModel.findById(id);
-        if (!existingFlagship) {
-          throw new NotFoundException('Flagship not found');
-        }
-        const imageKeys: string[] = existingFlagship.images || [];
+        const baseImages = imageKeys ? [...imageKeys] : [...(existingFlagship.images || [])];
+        imageKeys = baseImages;
 
         for (const file of updateDto.files) {
           try {
@@ -305,7 +371,12 @@ export class FlagshipService {
       }
     }
 
+    const rawRemoveDetailedPlan = (updateDto as any)?.removeDetailedPlan;
+    const removeDetailedPlan =
+      rawRemoveDetailedPlan === true || rawRemoveDetailedPlan === 'true';
+
     if (updateDto.detailedPlanDoc) {
+      const previousPlan = existingFlagship.detailedPlan;
       const detailedPlanKey = `flagship/${id}/detailed-plan-${Date.now()}-${updateDto.detailedPlanDoc.originalname}`;
       await this.storageService.uploadFile(
         detailedPlanKey,
@@ -313,6 +384,15 @@ export class FlagshipService {
         updateDto.detailedPlanDoc.mimetype || 'application/octet-stream',
       );
       updateData['detailedPlan'] = detailedPlanKey;
+      if (previousPlan) {
+        this.storageService.deleteFile(previousPlan).catch(() => null);
+      }
+    } else if (removeDetailedPlan) {
+      const previousPlan = existingFlagship.detailedPlan;
+      updateData['detailedPlan'] = null as any;
+      if (previousPlan) {
+        this.storageService.deleteFile(previousPlan).catch(() => null);
+      }
     }
 
     const updatedFlagship = await this.flagshipModel.findByIdAndUpdate(
@@ -323,6 +403,24 @@ export class FlagshipService {
 
     if (!updatedFlagship) {
       throw new NotFoundException('Flagship not found');
+    }
+
+    const normalizeValue = (value: any) => {
+      if (value instanceof Date) return value.toISOString();
+      return value;
+    };
+    const existingValue = existingFlagship.toObject();
+    const changedKeys = Object.keys(updateData).filter((key) => {
+      const prev = normalizeValue((existingValue as any)[key]);
+      const next = normalizeValue((updateData as any)[key]);
+      return JSON.stringify(prev ?? null) !== JSON.stringify(next ?? null);
+    });
+    const visibilityOnly =
+      changedKeys.length > 0 && changedKeys.every((key) => key === 'visibility');
+    const shouldNotify =
+      !silentUpdate && !visibilityOnly && changedKeys.length > 0;
+    if (shouldNotify) {
+      void this.notifyFlagshipUpdated(updatedFlagship);
     }
 
     return updatedFlagship;

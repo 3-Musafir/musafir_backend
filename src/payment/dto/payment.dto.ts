@@ -153,6 +153,14 @@ export class GetRefundsQueryDto {
   @IsIn(['all', 'pending', 'approved_not_credited', 'credited', 'rejected'])
   group?: 'all' | 'pending' | 'approved_not_credited' | 'credited' | 'rejected';
 
+  @ApiPropertyOptional({
+    example: '64c2b62d9c4f4e6f9a0f1234',
+    description: 'Filter refunds by flagship id.',
+  })
+  @IsOptional()
+  @IsString()
+  flagshipId?: string;
+
   @ApiPropertyOptional({ example: 1, description: '1-based page' })
   @Type(() => Number)
   @IsOptional()

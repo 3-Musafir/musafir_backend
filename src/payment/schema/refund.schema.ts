@@ -59,3 +59,6 @@ export const RefundSchema = new Schema<Refund>(
     versionKey: false,
   },
 );
+
+RefundSchema.index({ status: 1, createdAt: -1 });
+RefundSchema.index({ registration: 1, createdAt: -1 });
