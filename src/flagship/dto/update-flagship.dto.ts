@@ -427,6 +427,18 @@ export class UpdateFlagshipDto {
     description: 'Suppress user notifications for this update.',
   })
   @IsOptional()
+  @Transform(({ value }) => {
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw === 'string') {
+      const normalized = raw.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0' || normalized === '') return false;
+      return raw;
+    }
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    return raw;
+  })
   @IsBoolean()
   silentUpdate?: boolean;
 

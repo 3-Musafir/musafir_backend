@@ -253,7 +253,16 @@ export class FlagshipService {
     updateDto: UpdateFlagshipDto,
   ): Promise<Flagship> {
     const updateData: Partial<UpdateFlagshipDto> = {};
-    const silentUpdate = Boolean(updateDto?.silentUpdate);
+    const silentUpdate = (() => {
+      const raw = (updateDto as any)?.silentUpdate;
+      const value = Array.isArray(raw) ? raw[0] : raw;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true' || normalized === '1') return true;
+        if (normalized === 'false' || normalized === '0' || normalized === '') return false;
+      }
+      return value === true;
+    })();
     const existingFlagship = await this.flagshipModel.findById(id).exec();
     if (!existingFlagship) {
       throw new NotFoundException('Flagship not found');
@@ -417,8 +426,13 @@ export class FlagshipService {
     });
     const visibilityOnly =
       changedKeys.length > 0 && changedKeys.every((key) => key === 'visibility');
+    const nextStatus = updateData.status ?? existingFlagship.status;
+    const nextPublish = updateData.publish ?? existingFlagship.publish;
+    const wasPublished =
+      existingFlagship.status === 'published' || existingFlagship.publish === true;
+    const isPublishedNow = nextStatus === 'published' || nextPublish === true;
     const shouldNotify =
-      !silentUpdate && !visibilityOnly && changedKeys.length > 0;
+      !silentUpdate && !visibilityOnly && changedKeys.length > 0 && (wasPublished || isPublishedNow);
     if (shouldNotify) {
       void this.notifyFlagshipUpdated(updatedFlagship);
     }
