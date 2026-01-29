@@ -377,8 +377,17 @@ export class FlagshipController {
   @ApiOperation({ summary: 'Get past trips' })
   @ApiOkResponse({})
   @ApiBearerAuth()
-  getPastTrips() {
-    return this.flagshipService.getPastTrips();
+  getPastTrips(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('signImages') signImages?: string,
+  ) {
+    const { page: parsedPage, limit: parsedLimit } = parsePagination(limit, page);
+    return this.flagshipService.getPastTrips({
+      page: parsedPage,
+      limit: parsedLimit,
+      signImages: signImages === 'true',
+    });
   }
 
   @Get('live-trips')
@@ -388,8 +397,17 @@ export class FlagshipController {
   @ApiOperation({ summary: 'Get live trips' })
   @ApiOkResponse({})
   @ApiBearerAuth()
-  getLiveTrips() {
-    return this.flagshipService.getLiveTrips();
+  getLiveTrips(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('signImages') signImages?: string,
+  ) {
+    const { page: parsedPage, limit: parsedLimit } = parsePagination(limit, page);
+    return this.flagshipService.getLiveTrips({
+      page: parsedPage,
+      limit: parsedLimit,
+      signImages: signImages === 'true',
+    });
   }
 
   @Get('upcoming-trips')
@@ -399,8 +417,17 @@ export class FlagshipController {
   @ApiOperation({ summary: 'Get upcoming trips' })
   @ApiOkResponse({})
   @ApiBearerAuth()
-  getUpcomingTrips() {
-    return this.flagshipService.getUpcomingTrips();
+  getUpcomingTrips(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('signImages') signImages?: string,
+  ) {
+    const { page: parsedPage, limit: parsedLimit } = parsePagination(limit, page);
+    return this.flagshipService.getUpcomingTrips({
+      page: parsedPage,
+      limit: parsedLimit,
+      signImages: signImages === 'true',
+    });
   }
 
   @Get(':id')

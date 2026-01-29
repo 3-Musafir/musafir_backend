@@ -1008,49 +1008,165 @@ export class FlagshipService {
     return this.userService.rejectUser(id, comment);
   }
 
-  async getPastTrips() {
+  async getPastTrips(options?: { page?: number; limit?: number; signImages?: boolean }) {
     const currentDate = new Date();
-    const pastTrips = await this.flagshipModel
-      .find({
-        endDate: { $lt: currentDate },
-      })
-      .sort({ endDate: -1 })
-      .exec();
+    const filter = { endDate: { $lt: currentDate } };
+    const pageRaw = Number(options?.page);
+    const limitRaw = Number(options?.limit);
+    const shouldSignImages = options?.signImages !== false;
+    const shouldPaginate =
+      (Number.isFinite(pageRaw) && pageRaw > 0) ||
+      (Number.isFinite(limitRaw) && limitRaw > 0);
 
-    const processedFlagships = await Promise.all(
-      pastTrips.map(async (flagship) => this.attachSignedImages(flagship)),
-    );
+    if (!shouldPaginate) {
+      const pastTrips = await this.flagshipModel
+        .find(filter)
+        .sort({ endDate: -1 })
+        .exec();
 
-    return processedFlagships;
+      const processedFlagships = shouldSignImages
+        ? await Promise.all(
+          pastTrips.map(async (flagship) => this.attachSignedImages(flagship)),
+        )
+        : pastTrips.map((flagship) => flagship.toObject());
+
+      return processedFlagships;
+    }
+
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 20));
+    const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+    const skip = (page - 1) * limit;
+
+    const [total, trips] = await Promise.all([
+      this.flagshipModel.countDocuments(filter).exec(),
+      this.flagshipModel
+        .find(filter)
+        .sort({ endDate: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+    ]);
+
+    const processedFlagships = shouldSignImages
+      ? await Promise.all(
+        trips.map(async (flagship) => this.attachSignedImages(flagship)),
+      )
+      : trips.map((flagship) => flagship.toObject());
+
+    return {
+      trips: processedFlagships,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  async getLiveTrips() {
-    const liveTrips = await this.flagshipModel
-      .find({
-        startDate: { $lte: new Date() },
-        endDate: { $gte: new Date() },
-      })
-      .sort({ startDate: 1 });
+  async getLiveTrips(options?: { page?: number; limit?: number; signImages?: boolean }) {
+    const filter = {
+      startDate: { $lte: new Date() },
+      endDate: { $gte: new Date() },
+    };
+    const pageRaw = Number(options?.page);
+    const limitRaw = Number(options?.limit);
+    const shouldSignImages = options?.signImages !== false;
+    const shouldPaginate =
+      (Number.isFinite(pageRaw) && pageRaw > 0) ||
+      (Number.isFinite(limitRaw) && limitRaw > 0);
 
-    const processedFlagships = await Promise.all(
-      liveTrips.map(async (flagship) => this.attachSignedImages(flagship)),
-    );
+    if (!shouldPaginate) {
+      const liveTrips = await this.flagshipModel
+        .find(filter)
+        .sort({ startDate: 1 });
 
-    return processedFlagships;
+      const processedFlagships = shouldSignImages
+        ? await Promise.all(
+          liveTrips.map(async (flagship) => this.attachSignedImages(flagship)),
+        )
+        : liveTrips.map((flagship) => flagship.toObject());
+
+      return processedFlagships;
+    }
+
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 20));
+    const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+    const skip = (page - 1) * limit;
+
+    const [total, trips] = await Promise.all([
+      this.flagshipModel.countDocuments(filter).exec(),
+      this.flagshipModel
+        .find(filter)
+        .sort({ startDate: 1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+    ]);
+
+    const processedFlagships = shouldSignImages
+      ? await Promise.all(
+        trips.map(async (flagship) => this.attachSignedImages(flagship)),
+      )
+      : trips.map((flagship) => flagship.toObject());
+
+    return {
+      trips: processedFlagships,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  async getUpcomingTrips() {
-    const upcomingTrips = await this.flagshipModel
-      .find({
-        startDate: { $gt: new Date() },
-      })
-      .sort({ startDate: 1 });
+  async getUpcomingTrips(options?: { page?: number; limit?: number; signImages?: boolean }) {
+    const filter = { startDate: { $gt: new Date() } };
+    const pageRaw = Number(options?.page);
+    const limitRaw = Number(options?.limit);
+    const shouldSignImages = options?.signImages !== false;
+    const shouldPaginate =
+      (Number.isFinite(pageRaw) && pageRaw > 0) ||
+      (Number.isFinite(limitRaw) && limitRaw > 0);
 
-    const processedFlagships = await Promise.all(
-      upcomingTrips.map(async (flagship) => this.attachSignedImages(flagship)),
-    );
+    if (!shouldPaginate) {
+      const upcomingTrips = await this.flagshipModel
+        .find(filter)
+        .sort({ startDate: 1 });
 
-    return processedFlagships;
+      const processedFlagships = shouldSignImages
+        ? await Promise.all(
+          upcomingTrips.map(async (flagship) => this.attachSignedImages(flagship)),
+        )
+        : upcomingTrips.map((flagship) => flagship.toObject());
+
+      return processedFlagships;
+    }
+
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 20));
+    const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+    const skip = (page - 1) * limit;
+
+    const [total, trips] = await Promise.all([
+      this.flagshipModel.countDocuments(filter).exec(),
+      this.flagshipModel
+        .find(filter)
+        .sort({ startDate: 1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+    ]);
+
+    const processedFlagships = shouldSignImages
+      ? await Promise.all(
+        trips.map(async (flagship) => this.attachSignedImages(flagship)),
+      )
+      : trips.map((flagship) => flagship.toObject());
+
+    return {
+      trips: processedFlagships,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**

@@ -8,6 +8,7 @@ import {
     Param,
     Post,
     UseGuards,
+    UnauthorizedException,
 } from '@nestjs/common';
 import {
     ApiTags,
@@ -34,9 +35,13 @@ export class RegistrationController {
         @GetUser() user: User,
         @Body() createRegistrationDto: CreateRegistrationDto,
     ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
         return this.registrationService.createRegistration(
             createRegistrationDto,
-            user._id.toString(),
+            userId,
           );
     }
 
@@ -45,10 +50,14 @@ export class RegistrationController {
     async getPastPassport(
         @GetUser() user: User,
     ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
         return {
             statusCode: 200,
             message: "Past passport fetched successfully",
-            data: await this.registrationService.getPastPassport(user._id.toString())
+            data: await this.registrationService.getPastPassport(userId)
         }
     }
 
@@ -57,10 +66,14 @@ export class RegistrationController {
     async getUpcomingPassport(
         @GetUser() user: User,
     ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
         return {
             statusCode: 200,
             message: "Upcoming passport fetched successfully",
-            data: await this.registrationService.getUpcomingPassport(user._id.toString())
+            data: await this.registrationService.getUpcomingPassport(userId)
         }
     }
 
