@@ -195,6 +195,65 @@ export class RegistrationService {
     }
   }
 
+  private parseAmount(value: unknown): number {
+    if (value === undefined || value === null) return 0;
+    const numeric = value.toString().replace(/[^0-9.-]/g, '');
+    const parsed = Number(numeric);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private resolveBasePrice(flagship: any, now = new Date()): number {
+    const basePrice = this.parseAmount(flagship?.basePrice);
+    const earlyBirdPrice = this.parseAmount(flagship?.earlyBirdPrice);
+    const deadlineValue = flagship?.earlyBirdDeadline;
+    if (earlyBirdPrice > 0 && deadlineValue) {
+      const deadline = new Date(deadlineValue);
+      if (!Number.isNaN(deadline.getTime()) && now <= deadline) {
+        return earlyBirdPrice;
+      }
+    }
+    return basePrice;
+  }
+
+  private resolveRegistrationPrice(
+    flagship: any,
+    registration: CreateRegistrationDto,
+    now = new Date(),
+  ): number {
+    let total = this.resolveBasePrice(flagship, now);
+
+    if (registration?.joiningFromCity && Array.isArray(flagship?.locations)) {
+      const location = flagship.locations.find(
+        (loc: any) =>
+          loc?.enabled && String(loc?.name) === String(registration.joiningFromCity),
+      );
+      total += this.parseAmount(location?.price);
+    }
+
+    if (registration?.tier && Array.isArray(flagship?.tiers)) {
+      const tier = flagship.tiers.find(
+        (t: any) => String(t?.name) === String(registration.tier),
+      );
+      total += this.parseAmount(tier?.price);
+    }
+
+    if (registration?.roomSharing && Array.isArray(flagship?.roomSharingPreference)) {
+      const desired = String(registration.roomSharing).toLowerCase();
+      const preference = flagship.roomSharingPreference.find((pref: any) => {
+        const name = String(pref?.name || '').toLowerCase();
+        const key = name.includes('twin') ? 'twin' : 'default';
+        return key === desired || name === desired;
+      });
+      total += this.parseAmount(preference?.price);
+    }
+
+    if (registration?.bedPreference === 'bed' && Array.isArray(flagship?.mattressTiers)) {
+      total += this.parseAmount(flagship.mattressTiers[0]?.price);
+    }
+
+    return Math.max(0, total);
+  }
+
   private async promoteWaitlistForFlagship(flagshipId: string) {
     if (!flagshipId) return;
 
@@ -501,6 +560,7 @@ export class RegistrationService {
         };
       }
 
+      const registrationPrice = this.resolveRegistrationPrice(flagship, registration);
       const initialStatus =
         user?.verification?.status === VerificationStatus.VERIFIED
           ? 'payment'
@@ -508,7 +568,8 @@ export class RegistrationService {
 
       const newRegistration = new this.registrationModel({
         ...registration,
-        amountDue: registration.price,
+        price: registrationPrice,
+        amountDue: registrationPrice,
         status: initialStatus,
         userGender: user?.gender,
         waitlistOfferStatus: 'none',
@@ -546,8 +607,8 @@ export class RegistrationService {
           groupMembers: registration.groupMembers,
           expectations: registration.expectations,
           tripType: registration.tripType,
-          price: registration.price,
-          amountDue: registration.price,
+          price: registrationPrice,
+          amountDue: registrationPrice,
           createdAt: createdRegistration.createdAt,
           startDate: regFlagship?.startDate,
           endDate: regFlagship?.endDate,
