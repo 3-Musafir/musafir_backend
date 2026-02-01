@@ -1,4 +1,5 @@
-import { IsBoolean, IsMongoId, IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsArray, IsBoolean, IsMongoId, IsNotEmpty, IsOptional, IsString, IsNumber, IsEmail } from 'class-validator';
 
 export class CreateRegistrationDto {
     @IsMongoId()
@@ -29,8 +30,20 @@ export class CreateRegistrationDto {
     @IsOptional()
     roomSharing: string;
 
-    @IsString()
     @IsOptional()
+    @Transform(({ value }) => {
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') {
+            return value
+                .split(/[,\n]+/)
+                .map((entry) => entry.trim())
+                .filter(Boolean);
+        }
+        return [];
+    })
+    @IsArray()
+    @IsEmail({}, { each: true })
+    @IsString({ each: true })
     groupMembers: string[];
 
     @IsString()

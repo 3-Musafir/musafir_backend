@@ -161,6 +161,8 @@ export const FlagshipSchema = new Schema(
 
     // New Discounts Fields
     discounts: { type: DiscountsSchema, required: false },
+    groupDiscountLockAt: { type: Date, required: false },
+    groupDiscountLockBy: { type: String, required: false },
 
     // Important Dates
     tripDates: { type: String, required: false },

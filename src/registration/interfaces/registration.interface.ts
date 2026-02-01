@@ -3,6 +3,15 @@ import { Payment } from "src/payment/interface/payment.interface";
 import { Rating } from "src/Rating/interfaces/rating.interface";
 import { User } from "src/user/interfaces/user.interface";
 
+export interface RegistrationLinkedContact {
+  email: string;
+  status: 'linked' | 'pending' | 'invited';
+  userId?: string | User;
+  registrationId?: string | Registration;
+  invitedAt?: Date;
+  linkedAt?: Date;
+}
+
 export class Registration {
   readonly _id: string;
   legacyRegistrationKey?: string;
@@ -24,6 +33,9 @@ export class Registration {
   readonly bedPreference?: string;
   readonly roomSharing?: string;
   readonly groupMembers?: string[];
+  readonly groupId?: string;
+  readonly groupDiscountStatus?: 'applied' | 'not_eligible' | 'budget_exhausted' | 'disabled';
+  readonly linkedContacts?: RegistrationLinkedContact[];
   readonly expectations?: string;
   readonly tripType?: string;
   readonly price: number;

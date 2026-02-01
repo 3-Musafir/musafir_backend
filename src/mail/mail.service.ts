@@ -462,4 +462,26 @@ export class MailService {
       return error;
     }
   }
+
+  async sendTripLinkNotificationEmail(context: {
+    toEmail: string;
+    subject: string;
+    headline: string;
+    message: string;
+    actionUrl: string;
+    actionLabel: string;
+  }) {
+    try {
+      await this.sendMail(context.toEmail, context.subject, 'trip-link-notification', {
+        headline: context.headline,
+        message: context.message,
+        actionUrl: context.actionUrl,
+        actionLabel: context.actionLabel,
+      });
+      return true;
+    } catch (error) {
+      console.log('Error sending trip link notification email:', error);
+      return error;
+    }
+  }
 }

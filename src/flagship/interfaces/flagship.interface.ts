@@ -76,6 +76,8 @@ export class Flagship {
       enabled: boolean;
     };
   };
+  groupDiscountLockAt?: Date;
+  groupDiscountLockBy?: string;
 
   // New content fields
   travelPlan?: string;

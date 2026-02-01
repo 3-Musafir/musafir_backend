@@ -21,6 +21,7 @@ import { computeRefundQuote } from './refund-policy.util';
 import { RefundSettlementService } from 'src/refund-settlement/refund-settlement.service';
 import { isWalletTxIdempotent, WalletService } from 'src/wallet/wallet.service';
 import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils';
+import { reallocateGroupDiscountsForFlagship } from 'src/registration/group-discount.util';
 
 @Injectable()
 export class PaymentService {
@@ -112,6 +113,21 @@ export class PaymentService {
       isPaid: false,
       seatLocked: false,
     });
+    if (registration?.tripType === 'group' && (registration?.flagship || registration?.flagshipId)) {
+      const flagshipId = String(registration.flagship || registration.flagshipId);
+      try {
+        await reallocateGroupDiscountsForFlagship(
+          {
+            registrationModel: this.registrationModel,
+            flagshipModel: this.flagshipModel,
+            userModel: this.user,
+          },
+          flagshipId,
+        );
+      } catch (error) {
+        console.error('Failed to reallocate group discounts after refund:', error);
+      }
+    }
     if (userId) {
       await this.updateUserTripStats(String(userId));
     }

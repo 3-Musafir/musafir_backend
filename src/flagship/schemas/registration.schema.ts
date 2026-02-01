@@ -31,6 +31,37 @@ export const RegistrationSchema = new Schema(
     bedPreference: { type: String, required: false },
     roomSharing: { type: String, required: false },
     groupMembers: { type: [String], required: false },
+    groupId: { type: Schema.Types.ObjectId, required: false },
+    groupDiscountStatus: {
+      type: String,
+      enum: ['applied', 'not_eligible', 'budget_exhausted', 'disabled'],
+      required: false,
+    },
+    linkedContacts: {
+      type: [
+        new Schema(
+          {
+            email: { type: String, required: true, lowercase: true },
+            status: {
+              type: String,
+              enum: ['linked', 'pending', 'invited'],
+              default: 'pending',
+            },
+            userId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+            registrationId: {
+              type: Schema.Types.ObjectId,
+              ref: 'Registration',
+              required: false,
+            },
+            invitedAt: { type: Date, required: false },
+            linkedAt: { type: Date, required: false },
+          },
+          { _id: false },
+        ),
+      ],
+      required: false,
+      default: [],
+    },
     expectations: { type: String, required: false },
     tripType: { type: String, required: false },
     price: { type: Number, required: false },

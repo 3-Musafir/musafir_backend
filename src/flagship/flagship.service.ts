@@ -23,6 +23,7 @@ import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { UserService } from 'src/user/user.service';
+import { reallocateGroupDiscountsForFlagship } from 'src/registration/group-discount.util';
 
 @Injectable()
 export class FlagshipService {
@@ -435,6 +436,21 @@ export class FlagshipService {
       !silentUpdate && !visibilityOnly && changedKeys.length > 0 && (wasPublished || isPublishedNow);
     if (shouldNotify) {
       void this.notifyFlagshipUpdated(updatedFlagship);
+    }
+
+    if (updateData.discounts !== undefined) {
+      try {
+        await reallocateGroupDiscountsForFlagship(
+          {
+            registrationModel: this.registerationModel,
+            flagshipModel: this.flagshipModel,
+            userModel: this.userModel,
+          },
+          String(updatedFlagship._id),
+        );
+      } catch (error) {
+        console.error('Failed to reallocate group discounts after flagship update:', error);
+      }
     }
 
     return updatedFlagship;
