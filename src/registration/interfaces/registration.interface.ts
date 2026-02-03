@@ -5,7 +5,8 @@ import { User } from "src/user/interfaces/user.interface";
 
 export interface RegistrationLinkedContact {
   email: string;
-  status: 'linked' | 'pending' | 'invited';
+  status: 'linked' | 'pending' | 'invited' | 'conflict';
+  conflictReason?: string;
   userId?: string | User;
   registrationId?: string | Registration;
   invitedAt?: Date;

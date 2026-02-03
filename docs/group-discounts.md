@@ -14,7 +14,8 @@ This document explains how group discounts are applied for flagship registration
 ## Admin controls
 Group discounts are only applied when the flagship has group discounts enabled:
 - `discounts.group.enabled = true`
-- `discounts.group.value` = total budget for group discounts (PKR)
+- `discounts.totalDiscountsValue` = global discount budget (PKR) used by group discounts
+- `discounts.group.value` = legacy group-only budget used only if total budget is empty
 - `discounts.group.count` = total discounted seats available (optional cap)
 
 If the budget or count is exhausted, new groups will not receive a discount.

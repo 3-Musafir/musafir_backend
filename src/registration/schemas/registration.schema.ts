@@ -43,9 +43,10 @@ export const RegistrationSchema = new Schema(
             email: { type: String, required: true, lowercase: true },
             status: {
               type: String,
-              enum: ['linked', 'pending', 'invited'],
+              enum: ['linked', 'pending', 'invited', 'conflict'],
               default: 'pending',
             },
+            conflictReason: { type: String, required: false },
             userId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
             registrationId: {
               type: Schema.Types.ObjectId,

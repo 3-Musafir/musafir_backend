@@ -84,16 +84,27 @@ const ensureGroupIdsForRegistrations = async (
     const regId = String(registration._id);
     const regIndex = indexById.get(regId);
     if (regIndex === undefined) return;
+    const currentGroupId = registration.groupId ? String(registration.groupId) : '';
     const groupMembers = Array.isArray(registration.groupMembers)
       ? registration.groupMembers
       : [];
     const linkedContacts = Array.isArray(registration.linkedContacts)
-      ? registration.linkedContacts.map((contact: any) => contact?.email).filter(Boolean)
+      ? registration.linkedContacts
+          .filter((contact: any) => contact?.status !== 'conflict')
+          .map((contact: any) => contact?.email)
+          .filter(Boolean)
       : [];
     const emails = normalizeEmailList([...groupMembers, ...linkedContacts]);
     emails.forEach((email) => {
       const targetId = regIdByEmail.get(email);
       if (!targetId) return;
+      const targetRegistration = regById.get(targetId);
+      const targetGroupId = targetRegistration?.groupId
+        ? String(targetRegistration.groupId)
+        : '';
+      if (currentGroupId && targetGroupId && currentGroupId !== targetGroupId) {
+        return;
+      }
       const targetIndex = indexById.get(targetId);
       if (targetIndex === undefined) return;
       union(regIndex, targetIndex);
@@ -239,13 +250,16 @@ export const reallocateGroupDiscountsForFlagship = async (
   }
 
   const rawGroupValue = groupConfig?.value;
+  const rawGlobalValue = flagshipDoc?.discounts?.totalDiscountsValue;
+  const hasGlobalValue =
+    rawGlobalValue !== undefined &&
+    rawGlobalValue !== null &&
+    String(rawGlobalValue).trim() !== '';
   const hasGroupValue =
     rawGroupValue !== undefined &&
     rawGroupValue !== null &&
     String(rawGroupValue).trim() !== '';
-  const rawTotalValue = hasGroupValue
-    ? rawGroupValue
-    : flagshipDoc?.discounts?.totalDiscountsValue;
+  const rawTotalValue = hasGlobalValue ? rawGlobalValue : rawGroupValue;
   const hasBudgetLimit =
     rawTotalValue !== undefined &&
     rawTotalValue !== null &&
@@ -266,7 +280,9 @@ export const reallocateGroupDiscountsForFlagship = async (
       cancelledAt: { $exists: false },
       refundStatus: { $ne: 'refunded' },
     })
-    .select('_id groupId userId groupMembers linkedContacts price walletPaid createdAt')
+    .select(
+      '_id groupId userId groupMembers linkedContacts price walletPaid createdAt amountDue isPaid discountApplied',
+    )
     .lean()
     .exec();
   registrations = await ensureGroupIdsForRegistrations(models, registrations);
@@ -314,17 +330,17 @@ export const reallocateGroupDiscountsForFlagship = async (
         const price = typeof registration.price === 'number' ? registration.price : 0;
         const walletPaid =
           typeof registration.walletPaid === 'number' ? registration.walletPaid : 0;
+        const isPaid = Boolean(registration.isPaid);
+        // Recalculate from source amounts; do not alter amounts for paid registrations.
         const updatedAmountDue = Math.max(0, price - discountToApply - walletPaid);
-        await models.registrationModel.updateOne(
-          { _id: registration._id },
-          {
-            $set: {
-              discountApplied: discountToApply,
-              amountDue: updatedAmountDue,
-              groupDiscountStatus: groupStatus,
-            },
-          },
-        );
+        const update: any = {
+          groupDiscountStatus: groupStatus,
+        };
+        if (!isPaid) {
+          update.discountApplied = discountToApply;
+          update.amountDue = updatedAmountDue;
+        }
+        await models.registrationModel.updateOne({ _id: registration._id }, { $set: update });
       }),
     );
 

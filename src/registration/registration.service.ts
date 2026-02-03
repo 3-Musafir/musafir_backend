@@ -19,6 +19,9 @@ import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } f
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { getGroupDiscountPerMember, reallocateGroupDiscountsForFlagship } from './group-discount.util';
 
+const isGroupedTripType = (tripType?: string) =>
+  tripType === 'group' || tripType === 'partner';
+
 export interface CreateRegistrationResult {
   registrationId: string;
   message: string;
@@ -34,11 +37,12 @@ export interface CreateRegistrationResult {
   };
 }
 
-type LinkedContactStatus = 'linked' | 'pending' | 'invited';
+type LinkedContactStatus = 'linked' | 'pending' | 'invited' | 'conflict';
 
 interface LinkedContactPayload {
   email: string;
   status: LinkedContactStatus;
+  conflictReason?: string;
   userId?: string;
   registrationId?: string;
   invitedAt?: Date;
@@ -195,6 +199,7 @@ export class RegistrationService {
       {
         $set: {
           'linkedContacts.$.status': contact.status,
+          'linkedContacts.$.conflictReason': contact.conflictReason ?? null,
           'linkedContacts.$.userId': contact.userId,
           'linkedContacts.$.registrationId': contact.registrationId,
           'linkedContacts.$.invitedAt': contact.invitedAt,
@@ -301,9 +306,16 @@ export class RegistrationService {
             ? String(matchedRegistration.groupId)
             : '';
           const matchedTripType = matchedRegistration?.tripType;
-          const enforceGroup = sourceTripType === 'group' || matchedTripType === 'group';
+          const enforceGroup =
+            isGroupedTripType(sourceTripType) || isGroupedTripType(matchedTripType);
           if (enforceGroup && activeGroupId && matchedGroupId && activeGroupId !== matchedGroupId) {
             conflicts.push({ email, reason: 'already_in_another_group' });
+            linkedContacts.push({
+              email,
+              status: 'conflict',
+              conflictReason: 'already_in_another_group',
+              userId: String(matchedUser._id),
+            });
             continue;
           }
           const resolvedGroupId = enforceGroup
@@ -411,11 +423,12 @@ export class RegistrationService {
     registrationId: string,
     user: User,
     flagship: any,
-  ): Promise<void> {
+  ): Promise<LinkConflict[]> {
     const userEmail = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
-    if (!userEmail) return;
+    if (!userEmail) return [];
 
     const now = new Date();
+    const conflicts: LinkConflict[] = [];
     const currentRegistration = await this.registrationModel
       .findById(registrationId)
       .select('_id groupId tripType')
@@ -442,10 +455,49 @@ export class RegistrationService {
       const pendingId = String(pending._id);
       if (pendingId === registrationId) continue;
 
+      const pendingUserId = pending.userId ? String(pending.userId) : '';
+      const pendingUser = pendingUserId
+        ? await this.userModel.findById(pendingUserId).select('email').lean().exec()
+        : null;
+      const pendingUserEmail =
+        typeof pendingUser?.email === 'string' ? pendingUser.email.trim().toLowerCase() : '';
+
       const pendingGroupId = pending?.groupId ? String(pending.groupId) : '';
       const pendingTripType = pending?.tripType;
-      const enforceGroup = currentTripType === 'group' || pendingTripType === 'group';
+      const enforceGroup =
+        isGroupedTripType(currentTripType) || isGroupedTripType(pendingTripType);
       if (enforceGroup && activeGroupId && pendingGroupId && activeGroupId !== pendingGroupId) {
+        await this.upsertLinkedContact(pendingId, {
+          email: userEmail,
+          status: 'conflict',
+          conflictReason: 'already_in_another_group',
+          userId: String(user._id),
+          registrationId: registrationId,
+        });
+        const conflictEmail = pendingUserEmail || 'member already in another group';
+        conflicts.push({ email: conflictEmail, reason: 'already_in_another_group' });
+        await this.upsertLinkedContact(registrationId, {
+          email: conflictEmail,
+          status: 'conflict',
+          conflictReason: 'already_in_another_group',
+          userId: pendingUserId || undefined,
+          registrationId: pendingId,
+        });
+        if (pendingUserId) {
+          try {
+            await this.notificationService.createForUser(pendingUserId, {
+              title: 'Group link conflict',
+              message: `${user?.fullName || 'A member'} could not be linked because they are already in another group.`,
+              type: 'general',
+              metadata: {
+                registrationId: pendingId,
+                conflictEmail: userEmail,
+              },
+            });
+          } catch (error) {
+            console.error('Failed to send inbound group conflict notification:', error);
+          }
+        }
         continue;
       }
 
@@ -461,13 +513,6 @@ export class RegistrationService {
         activeGroupId = resolvedGroupId;
         groupLinkUpdated = true;
       }
-
-      const pendingUserId = pending.userId ? String(pending.userId) : '';
-      const pendingUser = pendingUserId
-        ? await this.userModel.findById(pendingUserId).select('email').lean().exec()
-        : null;
-      const pendingUserEmail =
-        typeof pendingUser?.email === 'string' ? pendingUser.email.trim().toLowerCase() : '';
 
       await this.upsertLinkedContact(pendingId, {
         email: userEmail,
@@ -492,6 +537,8 @@ export class RegistrationService {
     if (groupLinkUpdated) {
       await this.reallocateGroupDiscounts(String(flagship?._id || flagship));
     }
+
+    return conflicts;
   }
 
   private async expireWaitlistOffers(flagshipId: string) {
@@ -984,8 +1031,22 @@ export class RegistrationService {
           : registration.tripType === 'group'
             ? normalizedContacts
             : [];
-      const groupId =
-        registration.tripType === 'group' ? new mongoose.Types.ObjectId() : undefined;
+      if (registration.tripType === 'partner') {
+        const userEmail = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+        const partnerEmail = cleanedContacts[0]?.toLowerCase();
+        if (!partnerEmail) {
+          throw new BadRequestException('Partner email is required for couple registrations.');
+        }
+        if (userEmail && partnerEmail === userEmail) {
+          throw new BadRequestException('Partner email must be different from your own.');
+        }
+      }
+      if (registration.tripType === 'partner' && cleanedContacts.length === 0) {
+        throw new BadRequestException('Partner email is required for couple registrations.');
+      }
+      const groupId = isGroupedTripType(registration.tripType)
+        ? new mongoose.Types.ObjectId()
+        : undefined;
       const registrationPrice = this.resolveRegistrationPrice(flagship, registration);
       const initialStatus =
         user?.verification?.status === VerificationStatus.VERIFIED
@@ -1020,14 +1081,22 @@ export class RegistrationService {
           flagship,
           cleanedContacts,
         );
-        linkConflicts = outboundResult.conflicts;
         if (outboundResult.linkedContacts.length > 0) {
           await this.registrationModel.findByIdAndUpdate(
             createdRegistration._id,
             { $set: { linkedContacts: outboundResult.linkedContacts } },
           );
         }
-        await this.processInboundLinks(String(createdRegistration._id), user, flagship);
+        const inboundConflicts = await this.processInboundLinks(
+          String(createdRegistration._id),
+          user,
+          flagship,
+        );
+        const merged = [...outboundResult.conflicts, ...inboundConflicts];
+        linkConflicts = merged.filter(
+          (conflict, index, self) =>
+            self.findIndex((item) => item.email === conflict.email) === index,
+        );
       } catch (error) {
         console.error('Failed to process registration links:', error);
       }
