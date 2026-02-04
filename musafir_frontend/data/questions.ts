@@ -42,7 +42,7 @@ export const QUESTIONS: Question[] = [
   },
   {
     id: "no_one",
-    text: "What if I don\u2019t know anyone there?",
+    text: "What if I dont know anyone there?",
     tags: ["no_one"],
     adjacentTags: ["solo_awkward", "community_active"],
   },
@@ -60,4 +60,4 @@ export const QUESTIONS: Question[] = [
   },
 ];
 
-export const EXPLORING_LABEL = "I\u2019m just exploring";
+export const EXPLORING_LABEL = "Im just exploring";

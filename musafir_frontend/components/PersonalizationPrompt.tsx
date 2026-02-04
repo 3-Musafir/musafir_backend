@@ -4,9 +4,9 @@ type PersonalizationPromptProps = {
 };
 
 const options = [
-  { label: "I\u2019m traveling solo", tag: "solo" },
+  { label: "Im traveling solo", tag: "solo" },
   { label: "Safety matters to me", tag: "safety" },
-  { label: "I\u2019m from Lahore", tag: "lahore" },
+  { label: "Im from Lahore", tag: "lahore" },
   { label: "Karachi", tag: "karachi" },
   { label: "Islamabad", tag: "islamabad" },
   { label: "Other", tag: "other" },

@@ -14,7 +14,7 @@ type ReviewCardProps = {
 };
 
 const helpedLabel = "\u2764\uFE0F This helped me";
-const thanksMessage = "Thanks \u2014 we\u2019ll show more stories like this.";
+const thanksMessage = "Thanks \u2014 well show more stories like this.";
 
 export default function ReviewCard({
   review,

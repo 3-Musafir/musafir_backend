@@ -26,7 +26,7 @@ const breatherMessages = [
 
 const completenessMessages = [
   "Youre seeing a mix of common experiences.",
-  "These aren\u2019t rare stories.",
+  "These arent rare stories.",
 ];
 
 const breatherThresholds = [5, 6, 7];
@@ -230,7 +230,7 @@ export default function ReviewFeed() {
 
   const contextLine =
     selectedQuestionId === EXPLORING_ID
-      ? "Here\u2019s how people describe their first experience:"
+      ? "Heres how people describe their first experience:"
       : "People who asked this said:";
 
   const showClosestExperiencesLabel = rankResult.usedAdjacentTags;
@@ -280,7 +280,7 @@ export default function ReviewFeed() {
             If youre wondering
           </h1>
           <p className="mt-2 text-base text-semantic-text sm:text-lg">
-            Youre probably not the first. Here\u2019s what real Musafirs said.
+            Youre probably not the first. Heres what real Musafirs said.
           </p>
           <p className="mt-3 text-sm text-semantic-text-light">
             These questions came from real Musafirs before their first trip.
