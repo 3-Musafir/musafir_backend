@@ -1,4 +1,4 @@
-import { Schema } from 'mongoose';
+import { Schema, Types } from 'mongoose';
 
 function transformValue(doc, ret: { [key: string]: any }) {
   delete ret.__v;
@@ -78,6 +78,11 @@ const DiscountsSchema = new Schema(
 export const FlagshipSchema = new Schema(
   {
     legacyFlagshipKey: { type: String, required: false, index: true, unique: true, sparse: true },
+    contentVersion: {
+      type: String,
+      required: true,
+      default: () => new Types.ObjectId().toHexString(),
+    },
     tripName: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },

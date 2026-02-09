@@ -13,6 +13,7 @@ export class Flagship {
   images?: string[];
   detailedPlan?: string;
   readonly updatedAt?: Date;
+  readonly contentVersion?: string;
 
   // Pricing
   readonly basePrice?: string;

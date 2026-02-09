@@ -162,18 +162,19 @@ const acquireGroupDiscountLock = async (
     const lockId = new mongoose.Types.ObjectId().toHexString();
     const now = new Date();
     const lockCutoff = new Date(now.getTime() - lockWindowMs);
-    const updated = await models.flagshipModel.findOneAndUpdate(
+    if (!mongoose.Types.ObjectId.isValid(flagshipId)) return null;
+    const flagshipObjectId = new mongoose.Types.ObjectId(flagshipId);
+    const result = await models.flagshipModel.collection.updateOne(
       {
-        _id: flagshipId,
+        _id: flagshipObjectId,
         $or: [
           { groupDiscountLockAt: { $exists: false } },
           { groupDiscountLockAt: { $lt: lockCutoff } },
         ],
       },
       { $set: { groupDiscountLockAt: now, groupDiscountLockBy: lockId } },
-      { new: true },
     );
-    if (updated) return lockId;
+    if (result.modifiedCount > 0) return lockId;
     if (attempt < maxAttempts - 1) {
       await delay(retryDelayMs);
     }
@@ -186,8 +187,10 @@ const releaseGroupDiscountLock = async (
   flagshipId: string,
   lockId: string,
 ): Promise<void> => {
-  await models.flagshipModel.updateOne(
-    { _id: flagshipId, groupDiscountLockBy: lockId },
+  if (!mongoose.Types.ObjectId.isValid(flagshipId)) return;
+  const flagshipObjectId = new mongoose.Types.ObjectId(flagshipId);
+  await models.flagshipModel.collection.updateOne(
+    { _id: flagshipObjectId, groupDiscountLockBy: lockId },
     { $unset: { groupDiscountLockAt: '', groupDiscountLockBy: '' } },
   );
 };

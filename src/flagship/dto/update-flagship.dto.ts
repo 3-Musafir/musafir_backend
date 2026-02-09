@@ -415,6 +415,14 @@ export class UpdateFlagshipDto {
   earlyBirdDeadline?: string;
 
   @ApiProperty({
+    example: '64f1c2b13e9b4f0b9a7f9b2a',
+    description: 'Concurrency token for optimistic updates.',
+  })
+  @IsOptional()
+  @IsString()
+  contentVersion?: string;
+
+  @ApiProperty({
     example: '2024-01-31T12:00:00.000Z',
     description: 'Last known update time for optimistic concurrency.',
   })

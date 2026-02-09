@@ -41,6 +41,29 @@ export class FlagshipService {
     private readonly userService: UserService,
   ) { }
 
+  private generateContentVersion(): string {
+    return new Types.ObjectId().toHexString();
+  }
+
+  private async ensureContentVersion(flagship: Flagship): Promise<string | undefined> {
+    if (!flagship) return undefined;
+    if (flagship.contentVersion) return flagship.contentVersion;
+    const nextVersion = this.generateContentVersion();
+    await this.flagshipModel.updateOne(
+      {
+        _id: (flagship as any)._id,
+        $or: [
+          { contentVersion: { $exists: false } },
+          { contentVersion: null },
+          { contentVersion: '' },
+        ],
+      },
+      { $set: { contentVersion: nextVersion } },
+    );
+    (flagship as any).contentVersion = nextVersion;
+    return nextVersion;
+  }
+
   async create(createFlagshipDto: CreateFlagshipDto): Promise<Flagship> {
     const startDate = dayjs(createFlagshipDto.startDate);
     const endDate = dayjs(createFlagshipDto.endDate);
@@ -177,6 +200,8 @@ export class FlagshipService {
       throw new NotFoundException(`Flagship not found`);
     }
 
+    await this.ensureContentVersion(flagship);
+
     if (flagship.images && flagship.images.length > 0) {
       const imageUrls = await Promise.all(
         flagship.images.map(async (imageKey) => {
@@ -268,12 +293,20 @@ export class FlagshipService {
     if (!existingFlagship) {
       throw new NotFoundException('Flagship not found');
     }
-    if (updateDto?.updatedAt) {
-      const incoming = new Date(updateDto.updatedAt).getTime();
-      const current = new Date(existingFlagship.updatedAt).getTime();
-      if (Number.isFinite(incoming) && Number.isFinite(current) && incoming !== current) {
-        throw new ConflictException('Flagship was updated by another user. Please refresh.');
-      }
+    const rawContentVersion = (updateDto as any)?.contentVersion;
+    const incomingContentVersion = Array.isArray(rawContentVersion)
+      ? rawContentVersion[0]
+      : rawContentVersion;
+    const normalizedContentVersion =
+      typeof incomingContentVersion === 'string'
+        ? incomingContentVersion.trim()
+        : undefined;
+    if (
+      normalizedContentVersion &&
+      existingFlagship.contentVersion &&
+      normalizedContentVersion !== existingFlagship.contentVersion
+    ) {
+      throw new ConflictException('Flagship was updated by another user. Please refresh.');
     }
     const allowedFields: (keyof UpdateFlagshipDto)[] = [
       'tripName',
@@ -405,16 +438,6 @@ export class FlagshipService {
       }
     }
 
-    const updatedFlagship = await this.flagshipModel.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true, runValidators: true },
-    );
-
-    if (!updatedFlagship) {
-      throw new NotFoundException('Flagship not found');
-    }
-
     const normalizeValue = (value: any) => {
       if (value instanceof Date) return value.toISOString();
       return value;
@@ -425,6 +448,20 @@ export class FlagshipService {
       const next = normalizeValue((updateData as any)[key]);
       return JSON.stringify(prev ?? null) !== JSON.stringify(next ?? null);
     });
+    const shouldBumpContentVersion = changedKeys.length > 0;
+    if (!existingFlagship.contentVersion || shouldBumpContentVersion) {
+      updateData['contentVersion'] = this.generateContentVersion();
+    }
+
+    const updatedFlagship = await this.flagshipModel.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedFlagship) {
+      throw new NotFoundException('Flagship not found');
+    }
     const visibilityOnly =
       changedKeys.length > 0 && changedKeys.every((key) => key === 'visibility');
     const nextStatus = updateData.status ?? existingFlagship.status;
