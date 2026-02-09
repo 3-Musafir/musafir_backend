@@ -17,6 +17,8 @@ import { NotificationService } from 'src/notifications/notification.service';
 import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { ErrorCode } from 'src/constants/error-codes';
+import { buildProfileStatus, isFlagshipProfileComplete } from 'src/user/profile-status.util';
 import { getGroupDiscountPerMember, reallocateGroupDiscountsForFlagship } from './group-discount.util';
 
 const isGroupedTripType = (tripType?: string) =>
@@ -990,6 +992,48 @@ export class RegistrationService {
     });
   }
 
+  private async expireStaleWaitlistsForUser(userId: string): Promise<void> {
+    const now = new Date();
+    const candidates: any[] = await this.registrationModel
+      .find({ userId, status: 'waitlisted' })
+      .select('_id userGender flagship')
+      .populate({ path: 'flagship', select: 'endDate' })
+      .lean()
+      .exec();
+
+    if (!candidates.length) return;
+
+    const expired = candidates.filter((reg) => {
+      const endDate = reg?.flagship?.endDate;
+      return endDate && new Date(endDate) < now;
+    });
+
+    if (!expired.length) return;
+
+    const expiredIds = expired.map((reg) => reg._id);
+    await this.registrationModel.updateMany(
+      { _id: { $in: expiredIds } },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelledAt: now,
+          waitlistOfferStatus: 'expired',
+          waitlistOfferResponse: 'declined',
+          waitlistOfferSentAt: null,
+          waitlistOfferAcceptedAt: null,
+          waitlistOfferExpiresAt: null,
+        },
+      },
+    );
+
+    for (const reg of expired) {
+      const flagshipId = reg?.flagship?._id?.toString?.();
+      if (!flagshipId) continue;
+      const bucket = resolveSeatBucket(reg?.userGender);
+      await this.adjustFlagshipSeatCount(flagshipId, bucket, 'waitlisted', -1);
+    }
+  }
+
   async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<CreateRegistrationResult> {
     try {
       const user = await this.userModel.findById(userId);
@@ -1022,6 +1066,19 @@ export class RegistrationService {
           status: existing.status,
           amountDue: existing.amountDue ?? 0,
         };
+      }
+
+      const roles = Array.isArray((user as any)?.roles) ? (user as any).roles : [];
+      const isAdmin = roles.includes('admin');
+      const profileStatus = buildProfileStatus(user);
+      const flagshipProfileComplete = isFlagshipProfileComplete(user);
+      if (!isAdmin && !flagshipProfileComplete) {
+        throw new ForbiddenException({
+          code: ErrorCode.PROFILE_INCOMPLETE,
+          message: 'Profile incomplete for flagship registration.',
+          userMessage: 'Please complete your profile (gender, phone, city) to continue registration.',
+          missingFields: profileStatus.requiredFor.flagshipRegistration,
+        });
       }
 
       const normalizedContacts = this.normalizeContactEmails(registration.groupMembers);
@@ -1202,6 +1259,7 @@ export class RegistrationService {
       // Keep status + user stats in sync before returning passport data
       await this.syncCompletedRegistrationsForUser(userId);
       await this.updateUserTripStats(userId);
+      await this.expireStaleWaitlistsForUser(userId);
 
       const now = new Date();
       const registrations = await this.registrationModel.find({

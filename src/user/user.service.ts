@@ -33,6 +33,7 @@ import { AppException } from '../common/exceptions/app.exception';
 import { ErrorCode } from '../constants/error-codes';
 import {
   buildProfileStatus,
+  isFlagshipProfileComplete,
   isProfileComplete as isProfileCompleteUtil,
 } from './profile-status.util';
 import { NotificationService } from 'src/notifications/notification.service';
@@ -229,6 +230,7 @@ export class UserService {
     return {
       ...(plainUser as any),
       profileComplete: this.isProfileComplete(plainUser),
+      flagshipProfileComplete: isFlagshipProfileComplete(plainUser),
       profileStatus,
     };
   }

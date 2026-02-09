@@ -64,10 +64,7 @@ export function buildProfileStatus(user: Partial<User>): ProfileStatus {
 
   const flagshipFields: ProfileFieldKey[] = [
     'phone',
-    'cnic',
     'city',
-    'employmentStatus',
-    'university',
     'gender',
   ];
 
@@ -97,6 +94,10 @@ export function buildProfileStatus(user: Partial<User>): ProfileStatus {
 
 export function isProfileComplete(user: Partial<User>): boolean {
   return buildProfileStatus(user).complete;
+}
+
+export function isFlagshipProfileComplete(user: Partial<User>): boolean {
+  return buildProfileStatus(user).requiredFor.flagshipRegistration.length === 0;
 }
 
 export function describeMissingProfileFields(fields: ProfileFieldKey[]): string[] {
