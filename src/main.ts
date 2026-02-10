@@ -27,8 +27,8 @@ async function bootstrap() {
 
   // Swagger
   const options = new DocumentBuilder()
-    .setTitle('Teen-Musafir App')
-    .setDescription('APIs for teen musafir web app')
+    .setTitle('3Musafir App')
+    .setDescription('APIs for 3musafir web app')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

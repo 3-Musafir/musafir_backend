@@ -15,6 +15,10 @@ export interface Refund extends Document {
   tierLabel?: string;
   policyLink?: string;
   policyAppliedAt?: Date;
+  rejectionCode?: string;
+  rejectionLabel?: string;
+  rejectionPublicNote?: string;
+  rejectionInternalNote?: string;
 }
 
 export const RefundSchema = new Schema<Refund>(
@@ -53,6 +57,10 @@ export const RefundSchema = new Schema<Refund>(
     tierLabel: { type: String, required: false },
     policyLink: { type: String, required: false },
     policyAppliedAt: { type: Date, required: false },
+    rejectionCode: { type: String, required: false },
+    rejectionLabel: { type: String, required: false },
+    rejectionPublicNote: { type: String, required: false },
+    rejectionInternalNote: { type: String, required: false },
   },
   {
     timestamps: true,

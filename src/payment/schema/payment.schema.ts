@@ -15,6 +15,7 @@ export interface Payment extends Document {
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   rejectionCode?: string;
+  rejectionLabel?: string;
   rejectionPublicNote?: string;
   rejectionInternalNote?: string;
   reviewedBy?: Types.ObjectId;
@@ -22,6 +23,7 @@ export interface Payment extends Document {
   resubmissionOf?: Types.ObjectId;
   resubmissionRoot?: Types.ObjectId;
   resubmissionCount?: number;
+  remainingDueAtDecision?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -82,6 +84,7 @@ export const PaymentSchema = new Schema<Payment>(
       default: 'pendingApproval',
     },
     rejectionCode: { type: String, required: false },
+    rejectionLabel: { type: String, required: false },
     rejectionPublicNote: { type: String, required: false },
     rejectionInternalNote: { type: String, required: false },
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', required: false },
@@ -89,6 +92,7 @@ export const PaymentSchema = new Schema<Payment>(
     resubmissionOf: { type: Schema.Types.ObjectId, ref: 'Payment', required: false },
     resubmissionRoot: { type: Schema.Types.ObjectId, ref: 'Payment', required: false },
     resubmissionCount: { type: Number, required: false, default: 0 },
+    remainingDueAtDecision: { type: Number, required: false },
   },
   {
     timestamps: true,

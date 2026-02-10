@@ -15,6 +15,7 @@ export interface Payment extends Document {
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   rejectionCode?: string;
+  rejectionLabel?: string;
   rejectionPublicNote?: string;
   rejectionInternalNote?: string;
   reviewedBy?: Types.ObjectId;
@@ -22,6 +23,7 @@ export interface Payment extends Document {
   resubmissionOf?: Types.ObjectId;
   resubmissionRoot?: Types.ObjectId;
   resubmissionCount?: number;
+  remainingDueAtDecision?: number;
   createdAt: Date;
   updatedAt: Date;
 }

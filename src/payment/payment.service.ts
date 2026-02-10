@@ -7,6 +7,7 @@ import {
   CreatePaymentDto,
   GetRefundsQueryDto,
   RejectPaymentDto,
+  RejectRefundDto,
   RequestRefundDto,
 } from './dto/payment.dto';
 import { StorageService } from 'src/storage/storageService';
@@ -23,6 +24,7 @@ import { RefundSettlementService } from 'src/refund-settlement/refund-settlement
 import { isWalletTxIdempotent, WalletService } from 'src/wallet/wallet.service';
 import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils';
 import { PaymentRejectionReason } from './interface/payment-rejection-reason.interface';
+import { RefundRejectionReason } from './interface/refund-rejection-reason.interface';
 
 @Injectable()
 export class PaymentService {
@@ -39,6 +41,8 @@ export class PaymentService {
     private readonly registrationModel: Model<Registration>,
     @InjectModel('PaymentRejectionReason')
     private readonly paymentRejectionReasonModel: Model<PaymentRejectionReason>,
+    @InjectModel('RefundRejectionReason')
+    private readonly refundRejectionReasonModel: Model<RefundRejectionReason>,
     @InjectModel('Refund')
     private readonly refundModel: Model<Refund>,
     private readonly storageService: StorageService,
@@ -149,6 +153,22 @@ export class PaymentService {
     return reason;
   }
 
+  private async resolveRefundRejectionReason(
+    code: string,
+    options?: { requireActive?: boolean },
+  ) {
+    if (!code) return null;
+    const query: any = { code };
+    if (options?.requireActive) {
+      query.active = true;
+    }
+    const reason = await this.refundRejectionReasonModel.findOne(query).lean().exec();
+    if (options?.requireActive && !reason) {
+      throw new BadRequestException('Invalid refund rejection reason.');
+    }
+    return reason;
+  }
+
   private buildRejectionPublicNote(
     reason: any,
     publicNote?: string,
@@ -160,9 +180,25 @@ export class PaymentService {
     return 'Your payment was rejected. Please resubmit your payment to confirm your seat.';
   }
 
+  private buildRefundRejectionPublicNote(
+    reason: any,
+    publicNote?: string,
+  ): string {
+    const trimmed = typeof publicNote === 'string' ? publicNote.trim() : '';
+    if (trimmed) return trimmed;
+    if (reason?.userMessage) return String(reason.userMessage);
+    if (reason?.label) return String(reason.label);
+    return 'Your refund request was rejected.';
+  }
+
   private buildRejectionLabel(reason: any, code?: string): string {
     if (reason?.label) return String(reason.label);
     return code ? `Payment rejected (${code})` : 'Payment rejected';
+  }
+
+  private buildRefundRejectionLabel(reason: any, code?: string): string {
+    if (reason?.label) return String(reason.label);
+    return code ? `Refund rejected (${code})` : 'Refund rejected';
   }
 
   private async computeGroupLinkStatus(flagshipId: string, groupId: string) {
@@ -442,6 +478,14 @@ export class PaymentService {
       .exec();
   }
 
+  async getRefundRejectionReasons(): Promise<any[]> {
+    return this.refundRejectionReasonModel
+      .find({ active: true })
+      .sort({ order: 1, label: 1 })
+      .lean()
+      .exec();
+  }
+
   async getPaymentHistoryByRegistrationId(
     registrationId: string,
     requester: User,
@@ -460,7 +504,7 @@ export class PaymentService {
     const isAdmin = this.isAdminUser(requester);
     const registration = await this.registrationModel
       .findById(registrationId)
-      .select('userId user')
+      .select('userId user amountDue walletPaid refundStatus seatLocked seatLockedAt cancelledAt')
       .lean()
       .exec();
     if (!registration) {
@@ -478,26 +522,68 @@ export class PaymentService {
     const limit = Math.max(1, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 20));
     const cursor = this.decodeCursor(options?.cursor);
 
-    const match: any = { registration: new Types.ObjectId(registrationId) };
+    const paymentMatch: any = { registration: new Types.ObjectId(registrationId) };
+    const refundMatch: any = { registration: new Types.ObjectId(registrationId) };
     if (cursor) {
-      match.$or = [
+      const cursorFilter = [
         { createdAt: { $lt: cursor.createdAt } },
         { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
       ];
+      paymentMatch.$or = cursorFilter;
+      refundMatch.$or = cursorFilter;
     }
 
     const payments = await this.paymentModel
-      .find(match)
+      .find(paymentMatch)
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
       .lean()
       .exec();
 
-    const hasMore = payments.length > limit;
-    if (hasMore) payments.pop();
+    const refundsRaw: any[] = await this.refundModel
+      .find(refundMatch)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean()
+      .exec();
+
+    const combined = [
+      ...payments.map((payment) => ({
+        type: 'payment' as const,
+        createdAt: payment.createdAt,
+        _id: payment._id,
+        doc: payment,
+      })),
+      ...refundsRaw.map((refund) => ({
+        type: 'refund' as const,
+        createdAt: refund.createdAt,
+        _id: refund._id,
+        doc: refund,
+      })),
+    ].sort((a, b) => {
+      const dateDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      const aId = a._id?.toString?.() || String(a._id);
+      const bId = b._id?.toString?.() || String(b._id);
+      return bId.localeCompare(aId);
+    });
+
+    const pageRecords = combined.slice(0, limit);
+    const hasMore = combined.length > limit;
+    const lastRecord = pageRecords[pageRecords.length - 1];
+    const nextCursor = hasMore && lastRecord
+      ? this.encodeCursor(lastRecord.createdAt, String(lastRecord._id))
+      : null;
+
+    const pagePayments = pageRecords
+      .filter((record) => record.type === 'payment')
+      .map((record) => record.doc);
+    const pageRefunds = pageRecords
+      .filter((record) => record.type === 'refund')
+      .map((record) => record.doc);
 
     const items = await Promise.all(
-      payments.map(async (payment: any) => {
+      pagePayments.map(async (payment: any) => {
         const screenshotUrl = await this.resolveScreenshotUrl(payment?.screenshot);
         const item: any = {
           _id: payment._id,
@@ -508,7 +594,9 @@ export class PaymentService {
           status: payment.status,
           screenshotUrl,
           rejectionCode: payment.rejectionCode,
+          rejectionLabel: payment.rejectionLabel,
           rejectionPublicNote: payment.rejectionPublicNote,
+          remainingDueAtDecision: payment.remainingDueAtDecision,
           reviewedAt: payment.reviewedAt,
           reviewedBy: payment.reviewedBy,
           resubmissionOf: payment.resubmissionOf,
@@ -524,6 +612,56 @@ export class PaymentService {
       }),
     );
 
+    const allRefundIds = await this.refundModel
+      .distinct('_id', { registration: new Types.ObjectId(registrationId) })
+      .exec();
+    const allRefundIdStrings = (allRefundIds || [])
+      .map((id) => (id?.toString?.() ? id.toString() : String(id)))
+      .filter(Boolean) as string[];
+    const settlements = allRefundIdStrings.length
+      ? await this.refundSettlementService.findByRefundIds(allRefundIdStrings)
+      : [];
+    const settlementByRefundId = new Map<string, any[]>();
+    settlements.forEach((settlement: any) => {
+      const key = settlement?.refundId?.toString?.() || String(settlement?.refundId);
+      if (!key) return;
+      if (!settlementByRefundId.has(key)) {
+        settlementByRefundId.set(key, []);
+      }
+      settlementByRefundId.get(key)?.push(settlement);
+    });
+
+    const refunds = pageRefunds.map((refund) => {
+      const refundId = refund?._id?.toString?.() || String(refund?._id);
+      const settlement = this.pickRefundSettlement(settlementByRefundId.get(refundId));
+      const item: any = {
+        _id: refund._id,
+        createdAt: refund.createdAt,
+        updatedAt: refund.updatedAt,
+        status: refund.status,
+        amountPaid: refund.amountPaid,
+        refundAmount: refund.refundAmount,
+        refundPercent: refund.refundPercent,
+        processingFee: refund.processingFee,
+        tierLabel: refund.tierLabel,
+        policyLink: refund.policyLink,
+        rejectionCode: refund.rejectionCode,
+        rejectionLabel: refund.rejectionLabel,
+        rejectionPublicNote: refund.rejectionPublicNote,
+        settlement: settlement
+          ? {
+            status: settlement.status,
+            method: settlement.method,
+            postedAt: settlement.postedAt || null,
+          }
+          : null,
+      };
+      if (isAdmin) {
+        item.rejectionInternalNote = refund.rejectionInternalNote;
+      }
+      return item;
+    });
+
     const summaryAgg = await this.paymentModel
       .aggregate([
         { $match: { registration: new Types.ObjectId(registrationId) } },
@@ -536,6 +674,11 @@ export class PaymentService {
                   _id: null,
                   total: { $sum: 1 },
                   maxResubmissionCount: { $max: '$resubmissionCount' },
+                  approvedAmount: {
+                    $sum: {
+                      $cond: [{ $eq: ['$status', 'approved'] }, '$amount', 0],
+                    },
+                  },
                 },
               },
             ],
@@ -545,7 +688,11 @@ export class PaymentService {
       .exec();
 
     const counts = summaryAgg?.[0]?.counts || [];
-    const totals = summaryAgg?.[0]?.totals?.[0] || { total: 0, maxResubmissionCount: 0 };
+    const totals = summaryAgg?.[0]?.totals?.[0] || {
+      total: 0,
+      maxResubmissionCount: 0,
+      approvedAmount: 0,
+    };
     const countByStatus: Record<string, number> = counts.reduce((acc: any, entry: any) => {
       acc[entry._id] = entry.count;
       return acc;
@@ -557,54 +704,122 @@ export class PaymentService {
       .lean()
       .exec();
 
-    const timeline = items
-      .flatMap((item: any) => {
-        const events: any[] = [
-          {
-            event: 'submitted',
-            at: item.createdAt,
-            paymentId: item._id,
-            status: 'pendingApproval',
-            label: 'Payment submitted',
-          },
-        ];
-        if (item.status === 'pendingApproval') {
-          events.push({
-            event: 'pending',
-            at: item.createdAt,
-            paymentId: item._id,
-            status: item.status,
-            label: 'Pending approval',
-          });
-        } else if (item.status === 'approved') {
-          events.push({
-            event: 'approved',
-            at: item.reviewedAt || item.createdAt,
-            paymentId: item._id,
-            status: item.status,
-            label: 'Payment approved',
-          });
-        } else if (item.status === 'rejected') {
-          events.push({
-            event: 'rejected',
-            at: item.reviewedAt || item.createdAt,
-            paymentId: item._id,
-            status: item.status,
-            label: 'Payment rejected',
-            note: item.rejectionPublicNote,
-          });
-        }
-        return events;
-      })
-      .sort((a: any, b: any) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    const timeline: any[] = [];
+    items.forEach((item: any) => {
+      timeline.push({
+        event: 'submitted',
+        at: item.createdAt,
+        paymentId: item._id,
+        status: 'pendingApproval',
+        label: 'Payment submitted',
+      });
+      if (item.status === 'pendingApproval') {
+        timeline.push({
+          event: 'pending',
+          at: item.createdAt,
+          paymentId: item._id,
+          status: item.status,
+          label: 'Pending approval',
+        });
+      } else if (item.status === 'approved') {
+        timeline.push({
+          event: 'approved',
+          at: item.reviewedAt || item.createdAt,
+          paymentId: item._id,
+          status: item.status,
+          label: 'Payment approved',
+        });
+      } else if (item.status === 'rejected') {
+        timeline.push({
+          event: 'rejected',
+          at: item.reviewedAt || item.createdAt,
+          paymentId: item._id,
+          status: item.status,
+          label: 'Payment rejected',
+          note: item.rejectionPublicNote,
+        });
+      }
+    });
 
-    const nextCursor =
-      items.length > 0 && hasMore
-        ? this.encodeCursor(items[items.length - 1].createdAt, String(items[items.length - 1]._id))
+    pageRefunds.forEach((refund: any) => {
+      const refundId = refund?._id?.toString?.() || String(refund?._id);
+      const settlement = this.pickRefundSettlement(settlementByRefundId.get(refundId));
+      timeline.push({
+        event: 'refund_requested',
+        at: refund.createdAt,
+        refundId: refund._id,
+        status: refund.status,
+        label: 'Refund requested',
+      });
+      if (refund.status === 'cleared') {
+        timeline.push({
+          event: 'refund_approved',
+          at: refund.updatedAt || refund.createdAt,
+          refundId: refund._id,
+          status: refund.status,
+          label: 'Refund approved',
+        });
+      } else if (refund.status === 'rejected') {
+        timeline.push({
+          event: 'refund_rejected',
+          at: refund.updatedAt || refund.createdAt,
+          refundId: refund._id,
+          status: refund.status,
+          label: 'Refund rejected',
+          note: refund.rejectionPublicNote,
+        });
+      }
+      if (settlement?.status === 'posted') {
+        const label =
+          settlement?.method === 'bank_refund' ? 'Refund processed' : 'Refund credited';
+        timeline.push({
+          event: 'refund_credited',
+          at: settlement.postedAt || settlement.updatedAt || refund.updatedAt || refund.createdAt,
+          refundId: refund._id,
+          status: 'refunded',
+          label,
+        });
+      }
+    });
+
+    if (registration?.seatLockedAt) {
+      timeline.push({
+        event: 'seat_locked',
+        at: registration.seatLockedAt,
+        label: 'Seat locked',
+      });
+    }
+    if (registration?.cancelledAt) {
+      timeline.push({
+        event: 'seat_cancelled',
+        at: registration.cancelledAt,
+        label: 'Seat cancelled',
+      });
+    }
+
+    timeline.sort((a: any, b: any) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+    const paidFromPayments = Math.max(0, Math.floor(Number(totals.approvedAmount) || 0));
+    const walletPaid =
+      typeof (registration as any)?.walletPaid === 'number'
+        ? (registration as any).walletPaid
+        : 0;
+    const totalPaid = paidFromPayments + Math.max(0, Math.floor(Number(walletPaid) || 0));
+    const totalRefunded = allRefundIdStrings.reduce((sum, refundId) => {
+      const settlement = this.pickRefundSettlement(settlementByRefundId.get(refundId));
+      if (settlement?.status === 'posted') {
+        return sum + Math.max(0, Math.floor(Number(settlement.amount) || 0));
+      }
+      return sum;
+    }, 0);
+    const remainingDue =
+      typeof (registration as any)?.amountDue === 'number'
+        ? Math.max(0, Math.floor(Number((registration as any).amountDue) || 0))
         : null;
 
     return {
       items,
+      refunds,
       summary: {
         total: totals.total || 0,
         pendingCount: countByStatus.pendingApproval || 0,
@@ -614,6 +829,10 @@ export class PaymentService {
         hasPending: (countByStatus.pendingApproval || 0) > 0,
         resubmissionCount: totals.maxResubmissionCount || 0,
         lastPaymentId: latestPayment?._id || null,
+        totalPaid,
+        totalRefunded,
+        remainingDue,
+        refundStatus: (registration as any)?.refundStatus || 'none',
       },
       timeline,
       nextCursor,
@@ -1210,13 +1429,18 @@ export class PaymentService {
       retryAt = retryAtDate.toISOString();
     }
 
+    const refundSafe = refund ? { ...refund } : null;
+    if (refundSafe) {
+      delete (refundSafe as any).rejectionInternalNote;
+    }
+
     return {
       registration: {
         _id: registration._id?.toString?.() || String(registration._id),
         status: registration.status,
         refundStatus: (registration as any)?.refundStatus || 'none',
       },
-      refund: refund || null,
+      refund: refundSafe,
       settlement,
       retryAt,
     };
@@ -1432,10 +1656,16 @@ export class PaymentService {
       const walletAmount = Number(paymentDoc.walletRequested) || 0;
       const totalPaid =
         Math.max(0, Number(paymentDoc.amount) || 0) + walletAmount;
+      const remainingDue =
+        typeof currentAmountDue === 'number' ? Math.max(0, currentAmountDue) : null;
+      const remainingSuffix =
+        typeof remainingDue === 'number'
+          ? ` Remaining due: Rs.${remainingDue.toLocaleString()}.`
+          : '';
       try {
         await this.notificationService.createForUser(userId, {
           title: 'Payment submitted',
-          message: `We received Rs.${totalPaid.toLocaleString()} for ${flagshipName || 'your trip'}.`,
+          message: `We received Rs.${totalPaid.toLocaleString()} for ${flagshipName || 'your trip'}.${remainingSuffix}`,
           type: 'payment',
           link,
           metadata: {
@@ -1444,6 +1674,7 @@ export class PaymentService {
             amount: totalPaid,
             paymentMethod: paymentDoc.paymentMethod,
             paymentType: paymentDoc.paymentType,
+            remainingDue,
           },
         });
       } catch (error) {
@@ -1458,6 +1689,7 @@ export class PaymentService {
             totalPaid,
             paymentDoc.paymentType || 'payment',
             absoluteLink,
+            typeof remainingDue === 'number' ? remainingDue : undefined,
           );
         } catch (error) {
           console.log('Failed to send payment submission email:', error);
@@ -1885,6 +2117,13 @@ export class PaymentService {
         // Registration already reflects approval for this payment, so we skip wallet/registration
         // mutations and just align the payment record itself.
         payment.status = 'approved';
+        const snapshotDue =
+          typeof (registration as any)?.amountDue === 'number'
+            ? (registration as any).amountDue
+            : undefined;
+        if (typeof snapshotDue === 'number') {
+          (payment as any).remainingDueAtDecision = snapshotDue;
+        }
         const requestedWallet =
           typeof (payment as any)?.walletRequested === 'number'
             ? (payment as any).walletRequested
@@ -2167,6 +2406,9 @@ export class PaymentService {
     }
 
     payment.status = 'approved';
+    if (typeof remainingDue === 'number') {
+      (payment as any).remainingDueAtDecision = remainingDue;
+    }
     if (this.isAdminUser(admin)) {
       payment.reviewedBy = admin?._id as any;
       payment.reviewedAt = new Date();
@@ -2272,6 +2514,7 @@ export class PaymentService {
     const update: any = {
       status: 'rejected',
       rejectionCode: options.rejectionCode,
+      rejectionLabel,
       rejectionPublicNote,
     };
     if (options.internalNote) {
@@ -2314,6 +2557,23 @@ export class PaymentService {
         console.log('Failed to release discount after payment rejection:', error);
       }
 
+      try {
+        const updatedRegistration: any = await this.registrationModel
+          .findById(payment.registration)
+          .select('amountDue')
+          .lean()
+          .exec();
+        if (typeof updatedRegistration?.amountDue === 'number') {
+          await this.paymentModel.updateOne(
+            { _id: payment._id },
+            { $set: { remainingDueAtDecision: updatedRegistration.amountDue } },
+          );
+          (payment as any).remainingDueAtDecision = updatedRegistration.amountDue;
+        }
+      } catch (error) {
+        console.log('Failed to snapshot remaining due after rejection:', error);
+      }
+
       // Notify user about rejection (in-app always, email when available).
       try {
         const populatedPayment = await this.paymentModel
@@ -2345,9 +2605,13 @@ export class PaymentService {
             const messageDetail = shouldPrefix
               ? `${rejectionLabel}. ${rejectionPublicNote}`
               : rejectionPublicNote || rejectionLabel;
+            const dueSuffix =
+              typeof (payment as any).remainingDueAtDecision === 'number'
+                ? ` Remaining due: Rs.${Number((payment as any).remainingDueAtDecision).toLocaleString()}.`
+                : '';
             const rejectionMessage = messageDetail
-              ? `Your payment for ${tripName} was rejected. ${messageDetail}`
-              : `Your payment for ${tripName} was rejected. Please resubmit your payment to confirm your seat.`;
+              ? `Your payment for ${tripName} was rejected. ${messageDetail}.${dueSuffix}`
+              : `Your payment for ${tripName} was rejected. Please resubmit your payment to confirm your seat.${dueSuffix}`;
             const rejectionLink =
               isWaitlistExpired || isNoPaymentDue
                 ? '/passport'
@@ -2367,6 +2631,7 @@ export class PaymentService {
                   amount: payment.amount,
                   rejectionCode: options.rejectionCode,
                   rejectionPublicNote,
+                  remainingDue: (payment as any).remainingDueAtDecision,
                 },
               });
             } catch (error) {
@@ -2392,6 +2657,9 @@ export class PaymentService {
                 payment.amount,
                 tripName,
                 emailReason,
+                typeof (payment as any).remainingDueAtDecision === 'number'
+                  ? (payment as any).remainingDueAtDecision
+                  : undefined,
               );
             } catch (error) {
               console.log('Failed to send payment rejected email:', error);
@@ -2903,7 +3171,14 @@ export class PaymentService {
     return { status: 'posted', refundId, amount };
   }
 
-  async rejectRefund(id: string, admin?: User): Promise<Refund> {
+  async rejectRefund(id: string, payload: RejectRefundDto, admin?: User): Promise<Refund> {
+    if (!payload?.rejectionCode) {
+      throw new BadRequestException('Rejection code is required.');
+    }
+    if (!this.isAdminUser(admin)) {
+      throw new ForbiddenException('Admin authentication required.');
+    }
+
     const refundDoc: any = await this.refundModel.findById(id).exec();
     if (!refundDoc) {
       throw new BadRequestException('Refund not found');
@@ -2936,9 +3211,28 @@ export class PaymentService {
       });
     }
 
+    const reason = await this.resolveRefundRejectionReason(payload.rejectionCode, {
+      requireActive: true,
+    });
+    const rejectionPublicNote = this.buildRefundRejectionPublicNote(
+      reason,
+      payload.publicNote,
+    );
+    const rejectionLabel = this.buildRefundRejectionLabel(reason, payload.rejectionCode);
+
+    const update: any = {
+      status: 'rejected',
+      rejectionCode: payload.rejectionCode,
+      rejectionLabel,
+      rejectionPublicNote,
+    };
+    if (payload.internalNote) {
+      update.rejectionInternalNote = payload.internalNote;
+    }
+
     const refund = await this.refundModel.findOneAndUpdate(
       { _id: id, status: 'pending' },
-      { status: 'rejected' },
+      update,
       { new: true },
     );
     if (!refund) {
@@ -2951,6 +3245,7 @@ export class PaymentService {
     if (refund?.registration) {
       const registration = await this.registrationModel
         .findById(refund.registration)
+        .populate({ path: 'flagship', select: 'tripName' })
         .exec();
 
       if (registration?._id) {
@@ -2959,26 +3254,74 @@ export class PaymentService {
         });
       }
 
-      if ((registration as any)?.userId) {
-        await this.updateUserTripStats(String((registration as any).userId));
+      const registrationUserId = (registration as any)?.userId || (registration as any)?.user;
+      const userId = registrationUserId ? String(registrationUserId) : null;
+      if (userId) {
+        await this.updateUserTripStats(userId);
 
-        const retryAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const retryAtDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const retryAt = retryAtDate.toISOString();
+        const tripName = (registration as any)?.flagship?.tripName || 'your trip';
+        const normalizedLabel = rejectionLabel?.toLowerCase?.() || '';
+        const normalizedNote = rejectionPublicNote?.toLowerCase?.() || '';
+        const shouldPrefix =
+          rejectionLabel &&
+          rejectionPublicNote &&
+          rejectionPublicNote !== rejectionLabel &&
+          (!normalizedLabel || !normalizedNote.includes(normalizedLabel));
+        const messageDetail = shouldPrefix
+          ? `${rejectionLabel}. ${rejectionPublicNote}`
+          : rejectionPublicNote || rejectionLabel;
+        const rejectionMessage = messageDetail
+          ? `Your refund request for ${tripName} was rejected. ${messageDetail}. You can reapply after 24 hours.`
+          : `Your refund request for ${tripName} was rejected. You can reapply after 24 hours.`;
+        const registrationId = registration?._id?.toString?.();
+        const refundLink = registrationId ? `/musafir/refund/${registrationId}` : '/passport';
         try {
-          await this.notificationService.createForUser(String((registration as any).userId), {
+          await this.notificationService.createForUser(userId, {
             title: 'Refund rejected',
-            message:
-              'Your refund request was rejected. You can reapply after 24 hours.',
+            message: rejectionMessage,
             type: 'refund',
-            link: '/passport',
+            link: refundLink,
             metadata: {
               refundId: refund._id?.toString(),
-              registrationId: registration._id?.toString(),
-              retryAt,
-              rejectedBy: admin?._id?.toString(),
-            },
-          });
+              registrationId,
+                retryAt,
+                rejectedBy: admin?._id?.toString(),
+                rejectionCode: payload.rejectionCode,
+                rejectionPublicNote,
+              },
+            });
         } catch (error) {
           console.log('Failed to send refund rejected notification:', error);
+        }
+
+        try {
+          const userDoc: any = await this.user
+            .findById(userId)
+            .select('email fullName')
+            .lean()
+            .exec();
+          if (userDoc?.email) {
+            const refundUrl =
+              process.env.FRONTEND_URL && registrationId
+                ? `${process.env.FRONTEND_URL}/musafir/refund/${registrationId}`
+                : undefined;
+            await this.mailService.sendMail(
+              userDoc.email,
+              'Your 3Musafir refund request was rejected',
+              './refund-rejected',
+              {
+                fullName: userDoc.fullName || 'Musafir',
+                tripName,
+                reason: messageDetail,
+                retryAt: retryAtDate.toLocaleString('en-US'),
+                refundUrl,
+              },
+            );
+          }
+        } catch (error) {
+          console.log('Failed to send refund rejected email:', error);
         }
       }
     }

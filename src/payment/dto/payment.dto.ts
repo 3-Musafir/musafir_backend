@@ -177,6 +177,32 @@ export class RejectPaymentDto {
   internalNote?: string;
 }
 
+export class RejectRefundDto {
+  @ApiProperty({
+    example: 'policy_ineligible',
+    description: 'Refund rejection reason code',
+  })
+  @IsNotEmpty()
+  @IsString()
+  rejectionCode: string;
+
+  @ApiPropertyOptional({
+    example: 'Refund is not eligible under the current policy window.',
+    description: 'Public note shown to the user',
+  })
+  @IsOptional()
+  @IsString()
+  publicNote?: string;
+
+  @ApiPropertyOptional({
+    example: 'Booking cancelled after cutoff.',
+    description: 'Internal note for admins only',
+  })
+  @IsOptional()
+  @IsString()
+  internalNote?: string;
+}
+
 export class GetRefundsQueryDto {
   @ApiPropertyOptional({
     example: 'pending',

@@ -221,6 +221,7 @@ export class MailService {
     amount: number,
     paymentType: string,
     paymentLink?: string,
+    remainingDue?: number,
   ) {
     try {
       await this.sendMail(
@@ -233,6 +234,7 @@ export class MailService {
           amount,
           paymentType,
           paymentLink,
+          remainingDue,
         },
       );
       return true;
@@ -331,7 +333,8 @@ export class MailService {
     fullName: string,
     amount: number,
     tripName: string,
-    reason?: string
+    reason?: string,
+    remainingDue?: number,
   ) {
     try {
       await this.sendMail(
@@ -343,6 +346,7 @@ export class MailService {
           amount: amount,
           tripName: tripName,
           reason: reason || 'Please ensure all payment details are correct and the screenshot is clear.',
+          remainingDue,
         },
       );
       return true;

@@ -20,6 +20,7 @@ import {
   CreatePaymentDto,
   GetRefundsQueryDto,
   RejectPaymentDto,
+  RejectRefundDto,
   RequestRefundDto,
 } from './dto/payment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -170,6 +171,15 @@ export class PaymentController {
     return this.paymentService.getRejectionReasons();
   }
 
+  @Get('refund-rejection-reasons')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get active refund rejection reasons' })
+  @ApiOkResponse({})
+  @Roles('admin')
+  getRefundRejectionReasons() {
+    return this.paymentService.getRefundRejectionReasons();
+  }
+
   @Get('registration/:registrationId/history')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -229,8 +239,12 @@ export class PaymentController {
   @ApiOperation({ summary: 'Reject Refund' })
   @ApiOkResponse({})
   @Roles('admin')
-  rejectRefund(@Param('id') id: string, @GetUser() admin: User) {
-    return this.paymentService.rejectRefund(id, admin);
+  rejectRefund(
+    @Param('id') id: string,
+    @Body() body: RejectRefundDto,
+    @GetUser() admin: User,
+  ) {
+    return this.paymentService.rejectRefund(id, body, admin);
   }
 
   @Post('create-payment')

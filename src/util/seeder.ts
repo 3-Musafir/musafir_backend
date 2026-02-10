@@ -8,6 +8,7 @@ import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { BankAccountSchema } from 'src/payment/schema/bankAccount.schema';
 import { PaymentSchema } from 'src/payment/schema/payment.schema';
 import { PaymentRejectionReasonSchema } from 'src/payment/schema/payment-rejection-reason.schema';
+import { RefundRejectionReasonSchema } from 'src/payment/schema/refund-rejection-reason.schema';
 import { RefundSchema } from 'src/payment/schema/refund.schema';
 import { RatingSchema } from 'src/Rating/schemas/rating.schema';
 import { ForgotPasswordSchema } from 'src/user/schemas/forgot-password.schema';
@@ -20,6 +21,10 @@ const Payment = mongoose.model('payments', PaymentSchema);
 const PaymentRejectionReason = mongoose.model(
   'PaymentRejectionReason',
   PaymentRejectionReasonSchema,
+);
+const RefundRejectionReason = mongoose.model(
+  'RefundRejectionReason',
+  RefundRejectionReasonSchema,
 );
 const BankAccount = mongoose.model('bankAccounts', BankAccountSchema);
 const ForgotPassword = mongoose.model('forgotPasswords', ForgotPasswordSchema);
@@ -112,6 +117,41 @@ export async function seed() {
       },
     ]);
     console.log('Seeded payment rejection reasons');
+  }
+
+  const existingRefundReasons = await RefundRejectionReason.countDocuments();
+  if (!existingRefundReasons) {
+    await RefundRejectionReason.insertMany([
+      {
+        code: 'policy_ineligible',
+        label: 'Not eligible under policy',
+        userMessage: 'Your refund request is outside the eligible policy window.',
+        active: true,
+        order: 1,
+      },
+      {
+        code: 'insufficient_payment',
+        label: 'Insufficient payment',
+        userMessage: 'Refunds are only available after approved payments.',
+        active: true,
+        order: 2,
+      },
+      {
+        code: 'missing_cancellation',
+        label: 'Cancellation required',
+        userMessage: 'Please cancel your seat before requesting a refund.',
+        active: true,
+        order: 3,
+      },
+      {
+        code: 'other',
+        label: 'Other',
+        userMessage: 'Your refund request could not be approved. Please contact support.',
+        active: true,
+        order: 99,
+      },
+    ]);
+    console.log('Seeded refund rejection reasons');
   }
 
   // await Flagship.deleteMany({});
