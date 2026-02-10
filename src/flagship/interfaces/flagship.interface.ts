@@ -55,7 +55,7 @@ export class Flagship {
   // Discounts
   readonly discounts?: {
     totalDiscountsValue: string;
-    partialTeam: {
+    partialTeam?: {
       amount: string;
       count: string;
       enabled: boolean;
@@ -64,17 +64,24 @@ export class Flagship {
       amount: string;
       count: string;
       enabled: boolean;
+      usedValue?: number;
+      usedCount?: number;
     };
     group: {
       value: string;
       amount: string;
       count: string;
       enabled: boolean;
+      usedValue?: number;
+      usedCount?: number;
     };
     musafir: {
       budget: string;
       count: string;
       enabled: boolean;
+      amount?: string;
+      usedValue?: number;
+      usedCount?: number;
     };
   };
   groupDiscountLockAt?: Date;

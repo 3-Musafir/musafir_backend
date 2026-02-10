@@ -19,6 +19,7 @@ import {
   CreateBankAccountDto,
   CreatePaymentDto,
   GetRefundsQueryDto,
+  RejectPaymentDto,
   RequestRefundDto,
 } from './dto/payment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -46,6 +47,15 @@ export class PaymentController {
   @ApiOkResponse({})
   getUserDiscountByRegistration(@Param('registrationId') registrationId: string) {
     return this.paymentService.getUserDiscountByRegistrationId(registrationId);
+  }
+
+  @Get('eligible-discounts/:registrationId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get eligible discounts for a registration' })
+  @ApiOkResponse({})
+  getEligibleDiscounts(@Param('registrationId') registrationId: string) {
+    return this.paymentService.getEligibleDiscountsByRegistrationId(registrationId);
   }
 
   @Get('get-bank-accounts')
@@ -151,6 +161,33 @@ export class PaymentController {
     return this.paymentService.getRefunds(query);
   }
 
+  @Get('rejection-reasons')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get active payment rejection reasons' })
+  @ApiOkResponse({})
+  @Roles('admin')
+  getRejectionReasons() {
+    return this.paymentService.getRejectionReasons();
+  }
+
+  @Get('registration/:registrationId/history')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get payment history for a registration' })
+  @ApiOkResponse({})
+  getPaymentHistory(
+    @Param('registrationId') registrationId: string,
+    @GetUser() user: User,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.paymentService.getPaymentHistoryByRegistrationId(registrationId, user, {
+      limit: parsedLimit,
+      cursor,
+    });
+  }
+
   @Patch('approve-refund/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Refund' })
@@ -215,8 +252,8 @@ export class PaymentController {
   @ApiOperation({ summary: 'Approve Payment' })
   @ApiOkResponse({})
   @Roles('admin')
-  approvePayment(@Param('id') id: string) {
-    return this.paymentService.approvePayment(id);
+  approvePayment(@Param('id') id: string, @GetUser() admin: User) {
+    return this.paymentService.approvePayment(id, admin);
   }
 
   @Patch('reject-payment/:id')
@@ -224,7 +261,11 @@ export class PaymentController {
   @ApiOperation({ summary: 'Reject Payment' })
   @ApiOkResponse({})
   @Roles('admin')
-  rejectPayment(@Param('id') id: string) {
-    return this.paymentService.rejectPayment(id);
+  rejectPayment(
+    @Param('id') id: string,
+    @Body() body: RejectPaymentDto,
+    @GetUser() admin: User,
+  ) {
+    return this.paymentService.rejectPayment(id, body, admin);
   }
 }

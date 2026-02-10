@@ -14,7 +14,14 @@ export interface Payment extends Document {
   walletDebitId?: string;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
-  rejectionReason?: string;
+  rejectionCode?: string;
+  rejectionPublicNote?: string;
+  rejectionInternalNote?: string;
+  reviewedBy?: Types.ObjectId;
+  reviewedAt?: Date;
+  resubmissionOf?: Types.ObjectId;
+  resubmissionRoot?: Types.ObjectId;
+  resubmissionCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,7 +81,14 @@ export const PaymentSchema = new Schema<Payment>(
       enum: ['pendingApproval', 'approved', 'rejected'],
       default: 'pendingApproval',
     },
-    rejectionReason: { type: String, required: false },
+    rejectionCode: { type: String, required: false },
+    rejectionPublicNote: { type: String, required: false },
+    rejectionInternalNote: { type: String, required: false },
+    reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+    reviewedAt: { type: Date, required: false },
+    resubmissionOf: { type: Schema.Types.ObjectId, ref: 'Payment', required: false },
+    resubmissionRoot: { type: Schema.Types.ObjectId, ref: 'Payment', required: false },
+    resubmissionCount: { type: Number, required: false, default: 0 },
   },
   {
     timestamps: true,
@@ -90,3 +104,5 @@ PaymentSchema.virtual('userDetails', {
 });
 
 PaymentSchema.index({ registration: 1, status: 1, createdAt: -1 });
+PaymentSchema.index({ resubmissionRoot: 1, createdAt: -1 });
+PaymentSchema.index({ resubmissionOf: 1 });

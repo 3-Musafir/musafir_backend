@@ -392,6 +392,7 @@ export class MailService {
     amount?: number;
     submittedAt?: Date | string;
     adminUrl?: string;
+    resubmissionCount?: number;
   }) {
     try {
       await this.sendMail(

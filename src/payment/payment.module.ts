@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from 'src/auth/auth.module';
 import { PaymentSchema } from 'src/payment/schema/payment.schema';
+import { PaymentRejectionReasonSchema } from 'src/payment/schema/payment-rejection-reason.schema';
 import { BankAccountSchema } from './schema/bankAccount.schema';
 import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
@@ -22,6 +23,7 @@ import { WalletModule } from 'src/wallet/wallet.module';
     MongooseModule.forFeature([
       { name: 'BankAccount', schema: BankAccountSchema },
       { name: 'Payment', schema: PaymentSchema },
+      { name: 'PaymentRejectionReason', schema: PaymentRejectionReasonSchema },
       { name: 'User', schema: UserSchema },
       { name: 'Flagship', schema: FlagshipSchema },
       { name: 'Refund', schema: RefundSchema },

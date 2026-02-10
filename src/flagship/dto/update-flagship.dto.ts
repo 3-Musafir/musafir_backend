@@ -88,10 +88,12 @@ class CitySeatsDto {
 
 class PartialTeamDiscountDto {
   @ApiProperty({ example: '1000', description: 'Partial team discount amount' })
+  @IsOptional()
   @IsString()
   amount: string;
 
   @ApiProperty({ example: '35', description: 'Partial team discount count' })
+  @IsOptional()
   @IsString()
   count: string;
 
@@ -99,6 +101,7 @@ class PartialTeamDiscountDto {
     example: true,
     description: 'Is partial team discount enabled',
   })
+  @IsOptional()
   enabled: boolean;
 }
 
@@ -107,10 +110,12 @@ class SoloFemaleDiscountDto {
     example: '750',
     description: 'Solo female discount per ticket',
   })
+  @IsOptional()
   @IsString()
   amount: string;
 
   @ApiProperty({ example: '12', description: 'Solo female discount count' })
+  @IsOptional()
   @IsString()
   count: string;
 
@@ -118,11 +123,23 @@ class SoloFemaleDiscountDto {
     example: true,
     description: 'Is solo female discount enabled',
   })
+  @IsOptional()
   enabled: boolean;
+
+  @ApiProperty({ example: 0, description: 'Solo female discount used value' })
+  @IsOptional()
+  @IsNumber()
+  usedValue?: number;
+
+  @ApiProperty({ example: 0, description: 'Solo female discount used count' })
+  @IsOptional()
+  @IsNumber()
+  usedCount?: number;
 }
 
 class GroupDiscountDto {
   @ApiProperty({ example: '45 pax', description: 'Group discount value' })
+  @IsOptional()
   @IsString()
   value: string;
 
@@ -130,32 +147,64 @@ class GroupDiscountDto {
     example: '0',
     description: 'Discount per ticket for group discount',
   })
+  @IsOptional()
   @IsString()
   amount: string;
 
   @ApiProperty({ example: '35', description: 'Group discount count' })
+  @IsOptional()
   @IsString()
   count: string;
 
   @ApiProperty({ example: true, description: 'Is group discount enabled' })
+  @IsOptional()
   enabled: boolean;
+
+  @ApiProperty({ example: 0, description: 'Group discount used value' })
+  @IsOptional()
+  @IsNumber()
+  usedValue?: number;
+
+  @ApiProperty({ example: 0, description: 'Group discount used count' })
+  @IsOptional()
+  @IsNumber()
+  usedCount?: number;
 }
 
 class MusafirDiscountDto {
   @ApiProperty({ example: '0', description: 'Musafir discount budget' })
+  @IsOptional()
   @IsString()
   budget: string;
 
+  @ApiProperty({ example: '0', description: 'Musafir discount per ticket' })
+  @IsOptional()
+  @IsString()
+  amount?: string;
+
   @ApiProperty({ example: '35', description: 'Musafir discount count' })
+  @IsOptional()
   @IsString()
   count: string;
 
   @ApiProperty({ example: true, description: 'Is musafir discount enabled' })
+  @IsOptional()
   enabled: boolean;
+
+  @ApiProperty({ example: 0, description: 'Musafir discount used value' })
+  @IsOptional()
+  @IsNumber()
+  usedValue?: number;
+
+  @ApiProperty({ example: 0, description: 'Musafir discount used count' })
+  @IsOptional()
+  @IsNumber()
+  usedCount?: number;
 }
 
 class DiscountsDto {
   @ApiProperty({ example: '50000', description: 'Total discounts value' })
+  @IsOptional()
   @IsString()
   totalDiscountsValue: string;
 
@@ -165,7 +214,8 @@ class DiscountsDto {
   })
   @ValidateNested()
   @Type(() => PartialTeamDiscountDto)
-  partialTeam: PartialTeamDiscountDto;
+  @IsOptional()
+  partialTeam?: PartialTeamDiscountDto;
 
   @ApiProperty({
     type: SoloFemaleDiscountDto,
@@ -173,17 +223,20 @@ class DiscountsDto {
   })
   @ValidateNested()
   @Type(() => SoloFemaleDiscountDto)
-  soloFemale: SoloFemaleDiscountDto;
+  @IsOptional()
+  soloFemale?: SoloFemaleDiscountDto;
 
   @ApiProperty({ type: GroupDiscountDto, description: 'Group Discount' })
   @ValidateNested()
   @Type(() => GroupDiscountDto)
-  group: GroupDiscountDto;
+  @IsOptional()
+  group?: GroupDiscountDto;
 
   @ApiProperty({ type: MusafirDiscountDto, description: 'Musafir Discount' })
   @ValidateNested()
   @Type(() => MusafirDiscountDto)
-  musafir: MusafirDiscountDto;
+  @IsOptional()
+  musafir?: MusafirDiscountDto;
 }
 
 export class UpdateFlagshipDto {

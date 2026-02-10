@@ -54,6 +54,7 @@ export class Registration {
   completedAt?: Date;
   readonly walletPaid?: number;
   readonly discountApplied?: number;
+  readonly discountType?: 'soloFemale' | 'group' | 'musafir';
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
   ratingId?: string | Rating;

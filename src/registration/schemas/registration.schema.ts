@@ -68,6 +68,7 @@ export const RegistrationSchema = new Schema(
     amountDue: { type: Number, required: false },
     walletPaid: { type: Number, required: false, default: 0 },
     discountApplied: { type: Number, required: false, default: 0 },
+    discountType: { type: String, required: false },
     status: { type: String, required: false, default: 'new' },
     waitlistAt: { type: Date, required: false },
     waitlistOfferSentAt: { type: Date, required: false },

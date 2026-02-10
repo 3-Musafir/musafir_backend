@@ -24,4 +24,8 @@ export class CreatePaymentDTO {
     @IsNumber()
     @IsOptional()
     discount: number;
+
+    @IsOptional()
+    @IsString()
+    discountType?: 'soloFemale' | 'group' | 'musafir';
 }

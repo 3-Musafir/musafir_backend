@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { FlagshipService } from './flagship.service';
 import { FlagshipController } from './flagship.controller';
+import { FlagshipAdminController } from './flagship.admin.controller';
 import { FlagshipSchema } from './schemas/flagship.schema';
 import { AuthModule } from '../auth/auth.module';
 import { RegistrationModule } from '../registration/registration.module';
@@ -28,7 +29,7 @@ import { UserModule } from 'src/user/user.module';
     NotificationModule,
     UserModule,
   ],
-  controllers: [FlagshipController],
+  controllers: [FlagshipController, FlagshipAdminController],
   providers: [FlagshipService, StorageService, ConfigService],
 })
 export class FlagshipModule { }

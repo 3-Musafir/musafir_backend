@@ -7,6 +7,7 @@ import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { BankAccountSchema } from 'src/payment/schema/bankAccount.schema';
 import { PaymentSchema } from 'src/payment/schema/payment.schema';
+import { PaymentRejectionReasonSchema } from 'src/payment/schema/payment-rejection-reason.schema';
 import { RefundSchema } from 'src/payment/schema/refund.schema';
 import { RatingSchema } from 'src/Rating/schemas/rating.schema';
 import { ForgotPasswordSchema } from 'src/user/schemas/forgot-password.schema';
@@ -16,6 +17,10 @@ const User = mongoose.model('users', UserSchema);
 const Flagship = mongoose.model('flagships', FlagshipSchema);
 const Registration = mongoose.model('registrations', RegistrationSchema);
 const Payment = mongoose.model('payments', PaymentSchema);
+const PaymentRejectionReason = mongoose.model(
+  'PaymentRejectionReason',
+  PaymentRejectionReasonSchema,
+);
 const BankAccount = mongoose.model('bankAccounts', BankAccountSchema);
 const ForgotPassword = mongoose.model('forgotPasswords', ForgotPasswordSchema);
 const Feedback = mongoose.model('feedbacks', FeedbackSchema);
@@ -44,6 +49,69 @@ export async function seed() {
       verification: { status: VerificationStatus.VERIFIED, RequestCall: false },
     });
     console.log(`Seeded admin user ${adminEmail}`);
+  }
+
+  const existingReasons = await PaymentRejectionReason.countDocuments();
+  if (!existingReasons) {
+    await PaymentRejectionReason.insertMany([
+      {
+        code: 'invalid_screenshot',
+        label: 'Screenshot unclear',
+        userMessage: 'Your payment screenshot is unclear. Please re-upload a clearer image.',
+        active: true,
+        order: 1,
+      },
+      {
+        code: 'amount_mismatch',
+        label: 'Amount mismatch',
+        userMessage: 'The amount does not match the expected payment. Please verify and resubmit.',
+        active: true,
+        order: 2,
+      },
+      {
+        code: 'bank_details_missing',
+        label: 'Bank details missing',
+        userMessage: 'Required bank details are missing. Please provide complete details.',
+        active: true,
+        order: 3,
+      },
+      {
+        code: 'duplicate_payment',
+        label: 'Duplicate payment',
+        userMessage: 'This payment appears to be a duplicate. Please confirm before resubmitting.',
+        active: true,
+        order: 4,
+      },
+      {
+        code: 'other',
+        label: 'Other',
+        userMessage: 'Your payment could not be approved. Please contact support or resubmit.',
+        active: true,
+        order: 99,
+      },
+      {
+        code: 'waitlist_offer_expired',
+        label: 'Waitlist offer expired',
+        userMessage: 'Your waitlist offer expired before approval.',
+        active: false,
+        order: 100,
+      },
+      {
+        code: 'no_payment_due',
+        label: 'No payment due',
+        userMessage: 'No payment was due for this registration.',
+        active: false,
+        order: 101,
+      },
+      {
+        code: 'seats_full',
+        label: 'Seats full',
+        userMessage: 'Seats were full when the payment was reviewed.',
+        active: false,
+        order: 102,
+      },
+    ]);
+    console.log('Seeded payment rejection reasons');
   }
 
   // await Flagship.deleteMany({});

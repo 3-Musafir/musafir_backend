@@ -98,6 +98,15 @@ export class CreatePaymentDto {
   @Type(() => Number)
   @IsNumber()
   discount?: number;
+
+  @ApiProperty({
+    example: 'soloFemale',
+    description: 'Discount type to apply',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  discountType?: 'soloFemale' | 'group' | 'musafir';
 }
 
 export class RequestRefundDto {
@@ -140,6 +149,32 @@ export class RequestRefundDto {
   @IsNotEmpty()
   @IsNumber()
   rating: number;
+}
+
+export class RejectPaymentDto {
+  @ApiProperty({
+    example: 'invalid_screenshot',
+    description: 'Rejection reason code',
+  })
+  @IsNotEmpty()
+  @IsString()
+  rejectionCode: string;
+
+  @ApiPropertyOptional({
+    example: 'Screenshot is unclear. Please re-upload a clearer image.',
+    description: 'Public note shown to the user',
+  })
+  @IsOptional()
+  @IsString()
+  publicNote?: string;
+
+  @ApiPropertyOptional({
+    example: 'Bank slip cropped; missing transaction ID.',
+    description: 'Internal note for admins only',
+  })
+  @IsOptional()
+  @IsString()
+  internalNote?: string;
 }
 
 export class GetRefundsQueryDto {

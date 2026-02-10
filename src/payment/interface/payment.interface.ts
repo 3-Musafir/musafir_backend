@@ -14,7 +14,14 @@ export interface Payment extends Document {
   walletDebitId?: string;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
-  rejectionReason?: string;
+  rejectionCode?: string;
+  rejectionPublicNote?: string;
+  rejectionInternalNote?: string;
+  reviewedBy?: Types.ObjectId;
+  reviewedAt?: Date;
+  resubmissionOf?: Types.ObjectId;
+  resubmissionRoot?: Types.ObjectId;
+  resubmissionCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }

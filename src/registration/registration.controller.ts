@@ -90,6 +90,31 @@ export class RegistrationController {
     }
 
     @UseGuards(JwtAuthGuard)
+    @Get('/group-link-status/:registrationId')
+    async getGroupLinkStatus(
+      @Param('registrationId') registrationId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Group link status fetched successfully',
+        data: await this.registrationService.getGroupLinkStatus(registrationId),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('/pending-group-invite/:flagshipId')
+    async getPendingGroupInvite(
+      @GetUser() user: User,
+      @Param('flagshipId') flagshipId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Pending group invite fetched successfully',
+        data: await this.registrationService.getPendingGroupInvite(flagshipId, user),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
     @Post('/reEvaluateRequestToJury')
     async sendReEvaluateRequestToJury(
       @GetUser() user: User,

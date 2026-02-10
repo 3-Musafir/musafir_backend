@@ -19,7 +19,12 @@ import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } f
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { ErrorCode } from 'src/constants/error-codes';
 import { buildProfileStatus, isFlagshipProfileComplete } from 'src/user/profile-status.util';
-import { getGroupDiscountPerMember, reallocateGroupDiscountsForFlagship } from './group-discount.util';
+import type {
+  GroupLinkStatusDto,
+  PendingGroupInviteDto,
+  LinkedContactPayload,
+  LinkedContactStatus,
+} from './dto/group-link.dto';
 
 const isGroupedTripType = (tripType?: string) =>
   tripType === 'group' || tripType === 'partner';
@@ -31,29 +36,12 @@ export interface CreateRegistrationResult {
   isPaid?: boolean;
   status?: string;
   amountDue?: number;
-  linkConflicts?: { email: string; reason: 'already_in_another_group' }[];
-  groupDiscount?: {
-    status: 'applied' | 'not_eligible' | 'budget_exhausted' | 'disabled';
-    perMember: number;
-    groupSize: number;
-  };
-}
-
-type LinkedContactStatus = 'linked' | 'pending' | 'invited' | 'conflict';
-
-interface LinkedContactPayload {
-  email: string;
-  status: LinkedContactStatus;
-  conflictReason?: string;
-  userId?: string;
-  registrationId?: string;
-  invitedAt?: Date;
-  linkedAt?: Date;
+  linkConflicts?: { email: string; reason: 'already_in_another_group' | 'already_invited' }[];
 }
 
 interface LinkConflict {
   email: string;
-  reason: 'already_in_another_group';
+  reason: 'already_in_another_group' | 'already_invited';
 }
 
 @Injectable()
@@ -126,64 +114,6 @@ export class RegistrationService {
       { _id: { $in: registrationIds }, groupId: { $exists: false } },
       { $set: { groupId } },
     );
-  }
-
-  private async reallocateGroupDiscounts(flagshipId: string): Promise<void> {
-    await reallocateGroupDiscountsForFlagship(
-      {
-        registrationModel: this.registrationModel,
-        flagshipModel: this.flagshipModel,
-        userModel: this.userModel,
-      },
-      flagshipId,
-    );
-  }
-
-  private async buildGroupDiscountSummary(
-    registrationId: string,
-    flagship: any,
-  ): Promise<CreateRegistrationResult['groupDiscount'] | undefined> {
-    const registration = await this.registrationModel
-      .findById(registrationId)
-      .select('groupId tripType discountApplied groupDiscountStatus')
-      .lean()
-      .exec();
-    if (!registration || registration?.tripType !== 'group' || !registration?.groupId) {
-      return undefined;
-    }
-
-    const groupId = String(registration.groupId);
-    const groupRegistrations = await this.registrationModel
-      .find({
-        groupId,
-        flagship: flagship?._id || flagship,
-        tripType: 'group',
-        cancelledAt: { $exists: false },
-        refundStatus: { $ne: 'refunded' },
-      })
-      .select('discountApplied')
-      .lean()
-      .exec();
-
-    const groupSize = groupRegistrations.length;
-    const perMember = getGroupDiscountPerMember(groupSize);
-    const groupEnabled = Boolean(flagship?.discounts?.group?.enabled);
-    const storedStatus = registration?.groupDiscountStatus;
-    if (storedStatus) {
-      return { status: storedStatus, perMember, groupSize };
-    }
-    if (!groupEnabled) {
-      return { status: 'disabled', perMember, groupSize };
-    }
-    if (!perMember) {
-      return { status: 'not_eligible', perMember, groupSize };
-    }
-
-    const discountedCount = groupRegistrations.filter(
-      (reg) => typeof reg.discountApplied === 'number' && reg.discountApplied >= perMember,
-    ).length;
-    const status = discountedCount === groupSize ? 'applied' : 'budget_exhausted';
-    return { status, perMember, groupSize };
   }
 
   private buildRegistrationLink(flagshipId: string): string {
@@ -285,6 +215,29 @@ export class RegistrationService {
     let groupLinkUpdated = false;
 
     for (const email of cleanedEmails) {
+      const existingInvite = await this.registrationModel
+        .findOne({
+          flagship: flagship?._id || flagship,
+          _id: { $ne: registrationId },
+          'linkedContacts.email': email,
+          'linkedContacts.status': { $in: ['linked', 'pending', 'invited'] },
+          cancelledAt: { $exists: false },
+          refundStatus: { $ne: 'refunded' },
+        })
+        .select('_id')
+        .lean()
+        .exec();
+
+      if (existingInvite?._id) {
+        conflicts.push({ email, reason: 'already_invited' });
+        linkedContacts.push({
+          email,
+          status: 'conflict',
+          conflictReason: 'already_invited',
+        });
+        continue;
+      }
+
       const matchedUser = await this.userModel
         .findOne({ email })
         .select('_id email fullName')
@@ -414,10 +367,6 @@ export class RegistrationService {
         );
       }
     }
-    if (groupLinkUpdated) {
-      await this.reallocateGroupDiscounts(String(flagship?._id || flagship));
-    }
-
     return { linkedContacts, conflicts };
   }
 
@@ -534,10 +483,6 @@ export class RegistrationService {
         });
       }
 
-    }
-
-    if (groupLinkUpdated) {
-      await this.reallocateGroupDiscounts(String(flagship?._id || flagship));
     }
 
     return conflicts;
@@ -666,6 +611,167 @@ export class RegistrationService {
     const numeric = value.toString().replace(/[^0-9.-]/g, '');
     const parsed = Number(numeric);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private mergeLinkedContacts(
+    registrations: Array<{ linkedContacts?: LinkedContactPayload[] }>,
+  ): LinkedContactPayload[] {
+    const priority: Record<LinkedContactStatus, number> = {
+      conflict: 3,
+      pending: 2,
+      invited: 1,
+      linked: 0,
+    };
+    const byEmail = new Map<string, LinkedContactPayload>();
+    registrations.forEach((registration) => {
+      (registration?.linkedContacts || []).forEach((contact) => {
+        const email = (contact.email || '').toLowerCase();
+        if (!email) return;
+        const existing = byEmail.get(email);
+        if (!existing) {
+          byEmail.set(email, { ...contact, email });
+          return;
+        }
+        const existingPriority = priority[existing.status];
+        const nextPriority = priority[contact.status];
+        if (nextPriority > existingPriority) {
+          byEmail.set(email, { ...contact, email });
+        }
+      });
+    });
+    return Array.from(byEmail.values());
+  }
+
+  private deriveAllLinked(contacts: LinkedContactPayload[]): boolean {
+    return !contacts.some((contact) => contact.status !== 'linked');
+  }
+
+  private async reconcileInboundLinks(
+    registrationId: string,
+    userEmail: string,
+    flagshipId: string,
+    userId: string,
+  ) {
+    if (!registrationId || !userEmail || !flagshipId) return;
+    const pendingRegistrations = await this.registrationModel
+      .find({
+        flagship: flagshipId,
+        _id: { $ne: registrationId },
+        'linkedContacts.email': userEmail,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id linkedContacts')
+      .lean()
+      .exec();
+
+    if (!pendingRegistrations.length) return;
+
+    const now = new Date();
+    for (const pending of pendingRegistrations) {
+      const updatedContacts = (pending.linkedContacts || []).map((contact: any) => {
+        if ((contact.email || '').toLowerCase() !== userEmail) return contact;
+        if (contact.status === 'linked') return contact;
+        if (contact.status === 'conflict') return contact;
+        return {
+          ...contact,
+          status: 'linked',
+          userId,
+          registrationId,
+          linkedAt: now,
+        };
+      });
+      await this.registrationModel.updateOne(
+        { _id: pending._id },
+        { $set: { linkedContacts: updatedContacts } },
+      );
+    }
+  }
+
+  private async computeGroupLinkStatus(registrationId: string): Promise<GroupLinkStatusDto> {
+    if (!registrationId) {
+      throw new BadRequestException('Registration ID is required');
+    }
+    const registration = await this.registrationModel
+      .findById(registrationId)
+      .select('flagship groupId groupMembers linkedContacts tripType createdAt')
+      .lean()
+      .exec();
+    if (!registration) {
+      throw new NotFoundException('Registration not found.');
+    }
+
+    const groupId = registration?.groupId ? String(registration.groupId) : null;
+    const flagshipId = registration?.flagship ? String(registration.flagship) : null;
+
+    if (!groupId || !flagshipId) {
+      const contacts = this.mergeLinkedContacts([registration as any]);
+      return {
+        registrationId: String(registration._id),
+        flagshipId,
+        groupId,
+        tripType: registration?.tripType,
+        groupSize: 1,
+        linkedContacts: contacts,
+        groupMembers: registration?.groupMembers || [],
+        allLinked: this.deriveAllLinked(contacts),
+      };
+    }
+
+    const registrations = await this.registrationModel
+      .find({
+        flagship: flagshipId,
+        groupId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('linkedContacts groupMembers createdAt')
+      .lean()
+      .exec();
+
+    const linkedContacts = this.mergeLinkedContacts(registrations as any);
+    const allLinked = this.deriveAllLinked(linkedContacts);
+
+    return {
+      registrationId: String(registration._id),
+      flagshipId,
+      groupId,
+      tripType: registration?.tripType,
+      groupSize: registrations.length,
+      linkedContacts,
+      groupMembers: registration?.groupMembers || [],
+      allLinked,
+    };
+  }
+
+  private async releaseDiscountUsage(registration: any): Promise<void> {
+    const discountType = registration?.discountType;
+    const discountApplied = Number(registration?.discountApplied || 0);
+    if (!discountType || discountApplied <= 0) return;
+    const flagshipId = String(registration.flagship || registration.flagshipId || '');
+    if (!flagshipId) return;
+
+    await this.flagshipModel.updateOne(
+      { _id: flagshipId },
+      {
+        $inc: {
+          [`discounts.${discountType}.usedValue`]: -discountApplied,
+          [`discounts.${discountType}.usedCount`]: -1,
+        },
+      },
+    );
+
+    const price = Number(registration?.price || 0);
+    const walletPaid = Number(registration?.walletPaid || 0);
+    const currentAmountDue =
+      typeof registration?.amountDue === 'number'
+        ? registration.amountDue
+        : Math.max(0, price - walletPaid - discountApplied);
+    const amountDue = Math.max(0, currentAmountDue + discountApplied);
+    await this.registrationModel.updateOne(
+      { _id: registration._id },
+      { $set: { discountApplied: 0, discountType: null, amountDue } },
+    );
   }
 
   private resolveBasePrice(flagship: any, now = new Date()): number {
@@ -1088,8 +1194,37 @@ export class RegistrationService {
           : registration.tripType === 'group'
             ? normalizedContacts
             : [];
+      if (!isGroupedTripType(registration.tripType) && cleanedContacts.length > 0) {
+        throw new BadRequestException({
+          code: 'trip_type_locked',
+          message: 'Trip type is locked after invites are added.',
+        });
+      }
+      const userEmail = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+      let pendingInviteGroupId: string | null = null;
+      if (userEmail) {
+        const pendingInvite = await this.registrationModel
+          .findOne({
+            flagship: registration.flagshipId,
+            'linkedContacts.email': userEmail,
+            'linkedContacts.status': { $in: ['pending', 'invited'] },
+            cancelledAt: { $exists: false },
+            refundStatus: { $ne: 'refunded' },
+          })
+          .select('_id groupId tripType')
+          .lean()
+          .exec();
+        if (pendingInvite && !isGroupedTripType(registration.tripType)) {
+          throw new BadRequestException({
+            code: 'trip_type_locked',
+            message: 'Trip type is locked after you receive a group invite.',
+          });
+        }
+        if (pendingInvite?.groupId && isGroupedTripType(pendingInvite.tripType)) {
+          pendingInviteGroupId = String(pendingInvite.groupId);
+        }
+      }
       if (registration.tripType === 'partner') {
-        const userEmail = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
         const partnerEmail = cleanedContacts[0]?.toLowerCase();
         if (!partnerEmail) {
           throw new BadRequestException('Partner email is required for couple registrations.');
@@ -1102,7 +1237,9 @@ export class RegistrationService {
         throw new BadRequestException('Partner email is required for couple registrations.');
       }
       const groupId = isGroupedTripType(registration.tripType)
-        ? new mongoose.Types.ObjectId()
+        ? pendingInviteGroupId
+          ? new mongoose.Types.ObjectId(pendingInviteGroupId)
+          : new mongoose.Types.ObjectId()
         : undefined;
       const registrationPrice = this.resolveRegistrationPrice(flagship, registration);
       const initialStatus =
@@ -1125,6 +1262,25 @@ export class RegistrationService {
       });
 
       const createdRegistration = await newRegistration.save();
+
+      const duplicate = await this.registrationModel
+        .findOne({
+          userId,
+          flagship: registration.flagshipId,
+          _id: { $ne: createdRegistration._id },
+          cancelledAt: { $exists: false },
+          refundStatus: { $ne: 'refunded' },
+        })
+        .select('_id')
+        .lean()
+        .exec();
+      if (duplicate?._id) {
+        await this.registrationModel.findByIdAndDelete(createdRegistration._id);
+        throw new BadRequestException({
+          code: 'already_in_group_for_flagship',
+          message: 'You already belong to a group for this trip.',
+        });
+      }
 
       let linkConflicts: LinkConflict[] = [];
       try {
@@ -1149,6 +1305,14 @@ export class RegistrationService {
           user,
           flagship,
         );
+        if (userEmail) {
+          await this.reconcileInboundLinks(
+            String(createdRegistration._id),
+            userEmail,
+            String(flagship?._id || flagship),
+            String(user._id),
+          );
+        }
         const merged = [...outboundResult.conflicts, ...inboundConflicts];
         linkConflicts = merged.filter(
           (conflict, index, self) =>
@@ -1197,19 +1361,15 @@ export class RegistrationService {
         console.log('Failed to send admin registration notification:', e);
       }
 
-      const groupDiscount = await this.buildGroupDiscountSummary(
-        String(createdRegistration._id),
-        flagship,
-      );
       const message = linkConflicts.length
-        ? 'Registration created. Some members are already linked to another group.'
+        ? 'Registration created. Some members could not be linked.'
         : 'Registration created successfully.';
       if (linkConflicts.length) {
         try {
           const conflictList = linkConflicts.map((conflict) => conflict.email).join(', ');
           await this.notificationService.createForUser(userId, {
             title: 'Group link conflict',
-            message: `These members are already linked to another group: ${conflictList}.`,
+            message: `Some members could not be linked: ${conflictList}.`,
             type: 'general',
             metadata: {
               registrationId: String(createdRegistration._id),
@@ -1225,7 +1385,6 @@ export class RegistrationService {
         registrationId: String(createdRegistration._id),
         message,
         linkConflicts: linkConflicts.length ? linkConflicts : undefined,
-        groupDiscount,
       };
     } catch (error) {
       console.error('Registration error:', error);
@@ -1333,6 +1492,59 @@ export class RegistrationService {
     }
   }
 
+  async getGroupLinkStatus(registrationId: string): Promise<GroupLinkStatusDto> {
+    return this.computeGroupLinkStatus(registrationId);
+  }
+
+  async getPendingGroupInvite(
+    flagshipId: string,
+    user: User,
+  ): Promise<PendingGroupInviteDto | null> {
+    if (!flagshipId) {
+      throw new BadRequestException('Flagship ID is required.');
+    }
+    const userEmail = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+    if (!userEmail) {
+      throw new BadRequestException('User email is required.');
+    }
+
+    const existingRegistration = await this.registrationModel
+      .findOne({
+        flagship: flagshipId,
+        userId: user?._id,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id')
+      .lean()
+      .exec();
+    if (existingRegistration?._id) {
+      return null;
+    }
+
+    const pendingInvite = await this.registrationModel
+      .findOne({
+        flagship: flagshipId,
+        'linkedContacts.email': userEmail,
+        'linkedContacts.status': { $in: ['pending', 'invited'] },
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id groupId groupMembers linkedContacts tripType')
+      .lean()
+      .exec();
+
+    if (!pendingInvite?._id) {
+      return null;
+    }
+
+    const status = await this.computeGroupLinkStatus(String(pendingInvite._id));
+    return {
+      inviterRegistrationId: String(pendingInvite._id),
+      ...status,
+    };
+  }
+
   async cancelSeat(registrationId: string, user: User) {
     const userId = user?._id?.toString();
     if (!userId) {
@@ -1385,14 +1597,12 @@ export class RegistrationService {
       }
     }
 
+    await this.releaseDiscountUsage(registration);
+
     if (registration.tripType === 'group' && registration.groupId) {
       const flagshipId = String(registration.flagship || registration.flagshipId || '');
       if (flagshipId) {
-        try {
-          await this.reallocateGroupDiscounts(flagshipId);
-        } catch (error) {
-          console.error('Failed to reallocate group discounts after cancellation:', error);
-        }
+        // Group discounts are now handled at payment time; no reallocation needed.
       }
     }
 
@@ -1492,6 +1702,8 @@ export class RegistrationService {
       await this.paymentModel.findByIdAndDelete(paymentId);
     }
 
+    await this.releaseDiscountUsage(registration);
+
     await this.registrationModel.findByIdAndDelete(registrationId);
 
     if (seatLocked && flagshipId) {
@@ -1520,11 +1732,7 @@ export class RegistrationService {
     }
 
     if (registration?.tripType === 'group' && registration?.groupId && flagshipId) {
-      try {
-        await this.reallocateGroupDiscounts(flagshipId);
-      } catch (error) {
-        console.error('Failed to reallocate group discounts after deletion:', error);
-      }
+      // Group discounts are now handled at payment time; no reallocation needed.
     }
 
     if (registrationUserId) {

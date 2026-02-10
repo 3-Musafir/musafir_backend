@@ -23,7 +23,6 @@ import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { UserService } from 'src/user/user.service';
-import { reallocateGroupDiscountsForFlagship } from 'src/registration/group-discount.util';
 
 @Injectable()
 export class FlagshipService {
@@ -43,6 +42,413 @@ export class FlagshipService {
 
   private generateContentVersion(): string {
     return new Types.ObjectId().toHexString();
+  }
+
+  private parseAmount(value: unknown): number {
+    if (value === undefined || value === null) return 0;
+    const numeric = value.toString().replace(/[^0-9.-]/g, '');
+    const parsed = Number(numeric);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private parseCount(value: unknown): number {
+    if (value === undefined || value === null) return 0;
+    const parsed = Math.floor(Number(value) || 0);
+    return Math.max(0, parsed);
+  }
+
+  private normalizeDiscountInput(
+    incoming: any,
+    existing: any,
+    typeKey: 'soloFemale' | 'group' | 'musafir',
+  ) {
+    const raw = incoming?.[typeKey] || {};
+    const prev = existing?.[typeKey] || {};
+    const enabled = raw?.enabled !== undefined ? Boolean(raw.enabled) : Boolean(prev.enabled);
+    const legacyAmount =
+      typeKey === 'group'
+        ? raw?.amount ?? raw?.value ?? prev?.amount ?? prev?.value
+        : typeKey === 'musafir'
+          ? raw?.amount ?? raw?.budget ?? prev?.amount ?? prev?.budget
+          : raw?.amount ?? prev?.amount;
+    const amount = this.parseAmount(legacyAmount);
+    const count = this.parseCount(raw?.count ?? prev?.count);
+    const usedValue = typeof prev?.usedValue === 'number' ? prev.usedValue : 0;
+    const usedCount = typeof prev?.usedCount === 'number' ? prev.usedCount : 0;
+
+    if (amount < 0 || count < 0) {
+      throw new BadRequestException('Discount values cannot be negative.');
+    }
+    if (enabled && (amount <= 0 || count <= 0)) {
+      throw new BadRequestException('Enabled discounts must have positive amount and count.');
+    }
+    const totalValue = amount * count;
+    if (usedValue > totalValue || usedCount > count) {
+      throw new BadRequestException('Discount totals cannot be below already used values.');
+    }
+
+    return {
+      enabled,
+      amount: String(amount),
+      count: String(count),
+      usedValue,
+      usedCount,
+    };
+  }
+
+  private buildNormalizedDiscounts(incomingDiscounts: any, existingDiscounts: any) {
+    const solo = this.normalizeDiscountInput(incomingDiscounts, existingDiscounts, 'soloFemale');
+    const group = this.normalizeDiscountInput(incomingDiscounts, existingDiscounts, 'group');
+    const musafir = this.normalizeDiscountInput(incomingDiscounts, existingDiscounts, 'musafir');
+
+    const totalValue =
+      (solo.enabled ? Number(solo.amount) * Number(solo.count) : 0) +
+      (group.enabled ? Number(group.amount) * Number(group.count) : 0) +
+      (musafir.enabled ? Number(musafir.amount) * Number(musafir.count) : 0);
+
+    return {
+      totalDiscountsValue: String(Math.max(0, Math.floor(totalValue))),
+      partialTeam: incomingDiscounts?.partialTeam ?? existingDiscounts?.partialTeam,
+      soloFemale: solo,
+      group: {
+        ...group,
+        value: incomingDiscounts?.group?.value ?? existingDiscounts?.group?.value,
+      },
+      musafir: {
+        ...musafir,
+        budget: incomingDiscounts?.musafir?.budget ?? existingDiscounts?.musafir?.budget,
+      },
+    };
+  }
+
+  private isGroupedTripType(tripType?: string) {
+    return tripType === 'group' || tripType === 'partner';
+  }
+
+  private mergeLinkedContacts(
+    registrations: Array<{ linkedContacts?: any[] }>,
+  ): any[] {
+    const priority: Record<string, number> = {
+      conflict: 3,
+      pending: 2,
+      invited: 1,
+      linked: 0,
+    };
+    const byEmail = new Map<string, any>();
+    registrations.forEach((registration) => {
+      (registration?.linkedContacts || []).forEach((contact: any) => {
+        const email = (contact.email || '').toLowerCase();
+        if (!email) return;
+        const existing = byEmail.get(email);
+        if (!existing) {
+          byEmail.set(email, { ...contact, email });
+          return;
+        }
+        const existingPriority = priority[existing.status] ?? 0;
+        const nextPriority = priority[contact.status] ?? 0;
+        if (nextPriority > existingPriority) {
+          byEmail.set(email, { ...contact, email });
+        }
+      });
+    });
+    return Array.from(byEmail.values());
+  }
+
+  private deriveAllLinked(contacts: any[]): boolean {
+    return !contacts.some((contact) => contact.status !== 'linked');
+  }
+
+  private buildDiscountAnalytics(raw: any) {
+    const enabled = Boolean(raw?.enabled);
+    const amount = this.parseAmount(raw?.amount ?? raw?.value ?? raw?.budget);
+    const count = this.parseCount(raw?.count);
+    const usedValue = typeof raw?.usedValue === 'number' ? raw.usedValue : 0;
+    const usedCount = typeof raw?.usedCount === 'number' ? raw.usedCount : 0;
+    const totalValue = Math.max(0, amount * count);
+    const remainingValue = Math.max(0, totalValue - usedValue);
+    const remainingCount = Math.max(0, count - usedCount);
+    return {
+      enabled,
+      amount,
+      count,
+      usedValue,
+      usedCount,
+      totalValue,
+      remainingValue,
+      remainingCount,
+    };
+  }
+
+  async getDiscountAnalytics(flagshipId: string) {
+    if (!flagshipId) {
+      throw new BadRequestException('Flagship ID is required.');
+    }
+    const flagship = await this.flagshipModel
+      .findById(flagshipId)
+      .select('discounts')
+      .lean()
+      .exec();
+    if (!flagship) {
+      throw new NotFoundException('Flagship not found.');
+    }
+    const discounts = (flagship as any)?.discounts || {};
+    const solo = this.buildDiscountAnalytics(discounts?.soloFemale);
+    const group = this.buildDiscountAnalytics(discounts?.group);
+    const musafir = this.buildDiscountAnalytics(discounts?.musafir);
+    const totalValue =
+      (solo.enabled ? solo.totalValue : 0) +
+      (group.enabled ? group.totalValue : 0) +
+      (musafir.enabled ? musafir.totalValue : 0);
+    return {
+      totalDiscountsValue: discounts?.totalDiscountsValue || String(totalValue),
+      soloFemale: solo,
+      group,
+      musafir,
+    };
+  }
+
+  async getGroupAnalytics(flagshipId: string) {
+    if (!flagshipId) {
+      throw new BadRequestException('Flagship ID is required.');
+    }
+    const registrations = await this.registerationModel
+      .find({
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('groupId tripType linkedContacts')
+      .lean()
+      .exec();
+
+    const grouped = registrations.filter(
+      (reg: any) => this.isGroupedTripType(reg?.tripType) && reg?.groupId,
+    );
+
+    const contactStats = {
+      total: 0,
+      linked: 0,
+      pending: 0,
+      invited: 0,
+      conflict: 0,
+    };
+    const groups = new Map<string, any[]>();
+
+    grouped.forEach((reg: any) => {
+      const groupId = String(reg.groupId);
+      if (!groups.has(groupId)) groups.set(groupId, []);
+      groups.get(groupId)!.push(reg);
+
+      (reg.linkedContacts || []).forEach((contact: any) => {
+        contactStats.total += 1;
+        switch (contact.status) {
+          case 'linked':
+            contactStats.linked += 1;
+            break;
+          case 'pending':
+            contactStats.pending += 1;
+            break;
+          case 'invited':
+            contactStats.invited += 1;
+            break;
+          case 'conflict':
+            contactStats.conflict += 1;
+            break;
+          default:
+            break;
+        }
+      });
+    });
+
+    let allLinkedGroups = 0;
+    for (const [, regs] of groups) {
+      const merged = this.mergeLinkedContacts(regs);
+      if (this.deriveAllLinked(merged)) {
+        allLinkedGroups += 1;
+      }
+    }
+
+    return {
+      totalGroups: groups.size,
+      groupedRegistrations: grouped.length,
+      allLinkedGroups,
+      completionRate: groups.size ? allLinkedGroups / groups.size : 0,
+      contacts: contactStats,
+    };
+  }
+
+  async getGroupConflicts(flagshipId: string) {
+    if (!flagshipId) {
+      throw new BadRequestException('Flagship ID is required.');
+    }
+    const registrations = await this.registerationModel
+      .find({
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id groupId tripType linkedContacts')
+      .lean()
+      .exec();
+
+    const emailMap = new Map<string, { email: string; entries: any[]; groupIds: Set<string>; hasConflict: boolean }>();
+    registrations.forEach((reg: any) => {
+      if (!this.isGroupedTripType(reg?.tripType) || !reg?.groupId) return;
+      const groupId = String(reg.groupId);
+      (reg.linkedContacts || []).forEach((contact: any) => {
+        const email = (contact.email || '').toLowerCase();
+        if (!email) return;
+        const entry = emailMap.get(email) || {
+          email,
+          entries: [],
+          groupIds: new Set<string>(),
+          hasConflict: false,
+        };
+        entry.entries.push({
+          registrationId: String(reg._id),
+          groupId,
+          status: contact.status,
+        });
+        entry.groupIds.add(groupId);
+        if (contact.status === 'conflict') {
+          entry.hasConflict = true;
+        }
+        emailMap.set(email, entry);
+      });
+    });
+
+    const conflicts = Array.from(emailMap.values())
+      .filter((entry) => entry.groupIds.size > 1 || entry.hasConflict)
+      .map((entry) => ({
+        email: entry.email,
+        entries: entry.entries,
+        groupIds: Array.from(entry.groupIds),
+        hasConflict: entry.hasConflict,
+      }));
+
+    return {
+      total: conflicts.length,
+      conflicts,
+    };
+  }
+
+  async reconcileGroupLinks(flagshipId: string) {
+    if (!flagshipId) {
+      throw new BadRequestException('Flagship ID is required.');
+    }
+    const registrations = await this.registerationModel
+      .find({
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+        linkedContacts: { $exists: true, $ne: [] },
+      })
+      .select('_id userId linkedContacts')
+      .lean()
+      .exec();
+
+    if (!registrations.length) {
+      return { updated: 0, linked: 0 };
+    }
+
+    const userIds = registrations
+      .map((reg: any) => reg.userId)
+      .filter(Boolean)
+      .map((id: any) => String(id));
+
+    const users = await this.userModel
+      .find({ _id: { $in: userIds } })
+      .select('_id email')
+      .lean()
+      .exec();
+
+    const emailByUserId = new Map<string, string>();
+    users.forEach((user: any) => {
+      if (user?.email) {
+        emailByUserId.set(String(user._id), String(user.email).toLowerCase());
+      }
+    });
+
+    const registrationByEmail = new Map<string, { registrationId: string; userId: string }>();
+    registrations.forEach((reg: any) => {
+      const email = emailByUserId.get(String(reg.userId));
+      if (email) {
+        registrationByEmail.set(email, {
+          registrationId: String(reg._id),
+          userId: String(reg.userId),
+        });
+      }
+    });
+
+    let updated = 0;
+    let linked = 0;
+    const now = new Date();
+
+    for (const reg of registrations) {
+      let changed = false;
+      const inviterEmail = emailByUserId.get(String(reg.userId));
+      const nextContacts = (reg.linkedContacts || []).map((contact: any) => {
+        const email = (contact.email || '').toLowerCase();
+        const match = registrationByEmail.get(email);
+        if (!match || contact.status === 'linked' || contact.status === 'conflict') {
+          return contact;
+        }
+        linked += 1;
+        changed = true;
+        return {
+          ...contact,
+          status: 'linked',
+          registrationId: match.registrationId,
+          userId: match.userId,
+          linkedAt: now,
+        };
+      });
+
+      if (changed) {
+        updated += 1;
+        await this.registerationModel.updateOne(
+          { _id: reg._id },
+          { $set: { linkedContacts: nextContacts } },
+        );
+      }
+
+      if (inviterEmail) {
+        for (const contact of nextContacts) {
+          if (contact.status !== 'linked') continue;
+          const targetRegistrationId = contact.registrationId;
+          if (!targetRegistrationId) continue;
+          const updateResult = await this.registerationModel.updateOne(
+            { _id: targetRegistrationId, 'linkedContacts.email': inviterEmail },
+            {
+              $set: {
+                'linkedContacts.$.status': 'linked',
+                'linkedContacts.$.registrationId': String(reg._id),
+                'linkedContacts.$.userId': String(reg.userId),
+                'linkedContacts.$.linkedAt': now,
+              },
+            },
+          );
+          if (!(updateResult as any)?.modifiedCount) {
+            await this.registerationModel.updateOne(
+              { _id: targetRegistrationId },
+              {
+                $push: {
+                  linkedContacts: {
+                    email: inviterEmail,
+                    status: 'linked',
+                    registrationId: String(reg._id),
+                    userId: String(reg.userId),
+                    linkedAt: now,
+                  },
+                },
+              },
+            );
+          }
+        }
+      }
+    }
+
+    return { updated, linked };
   }
 
   private async ensureContentVersion(flagship: Flagship): Promise<string | undefined> {
@@ -69,6 +475,12 @@ export class FlagshipService {
     const endDate = dayjs(createFlagshipDto.endDate);
     const diffDays = endDate.diff(startDate, 'day');
     createFlagshipDto.days = diffDays;
+    if ((createFlagshipDto as any)?.discounts) {
+      (createFlagshipDto as any).discounts = this.buildNormalizedDiscounts(
+        (createFlagshipDto as any).discounts,
+        {},
+      );
+    }
     const newFlagship = new this.flagshipModel(createFlagshipDto);
     const saved = await newFlagship.save();
     await this.notifyNewFlagship(saved);
@@ -349,6 +761,15 @@ export class FlagshipService {
       }
     });
 
+    if (updateData.discounts !== undefined) {
+      const incomingDiscounts = updateData.discounts as any;
+      const existingDiscounts = (existingFlagship as any)?.discounts || {};
+      updateData.discounts = this.buildNormalizedDiscounts(
+        incomingDiscounts,
+        existingDiscounts,
+      ) as any;
+    }
+
     const rawRemoveImages = (updateDto as any)?.removeImages;
     let removeImages: string[] = [];
     if (Array.isArray(rawRemoveImages)) {
@@ -473,21 +894,6 @@ export class FlagshipService {
       !silentUpdate && !visibilityOnly && changedKeys.length > 0 && (wasPublished || isPublishedNow);
     if (shouldNotify) {
       void this.notifyFlagshipUpdated(updatedFlagship);
-    }
-
-    if (updateData.discounts !== undefined) {
-      try {
-        await reallocateGroupDiscountsForFlagship(
-          {
-            registrationModel: this.registerationModel,
-            flagshipModel: this.flagshipModel,
-            userModel: this.userModel,
-          },
-          String(updatedFlagship._id),
-        );
-      } catch (error) {
-        console.error('Failed to reallocate group discounts after flagship update:', error);
-      }
     }
 
     return updatedFlagship;
