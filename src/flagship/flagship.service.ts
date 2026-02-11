@@ -1543,7 +1543,148 @@ export class FlagshipService {
     };
   }
 
-  async gePaymentStats(id: string) {}
+  async gePaymentStats(id: string) {
+    const flagship = await this.flagshipModel.findById(id).lean();
+    if (!flagship) {
+      throw new NotFoundException(`Flagship with ID ${id} not found`);
+    }
+
+    const registrations = await this.registerationModel
+      .find({ flagship: id, cancelledAt: { $exists: false } })
+      .select('userGender joiningFromCity amountDue walletPaid discountApplied discountType status')
+      .lean()
+      .exec();
+
+    const startDate = flagship.startDate ? new Date(flagship.startDate) : null;
+    const today = new Date();
+    const daysUntilStart = startDate
+      ? Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    const totalSeats = this.parseCount(flagship.totalSeats);
+    const seatsFilled = registrations.length;
+
+    const maleSeats = registrations.filter((reg) => reg.userGender === 'male').length;
+    const femaleSeats = registrations.filter((reg) => reg.userGender === 'female').length;
+
+    const cityCounts = {
+      islamabad: 0,
+      lahore: 0,
+      karachi: 0,
+      other: 0,
+    };
+
+    registrations.forEach((reg) => {
+      const city = (reg.joiningFromCity || '').toLowerCase();
+      if (city.includes('islamabad')) cityCounts.islamabad += 1;
+      else if (city.includes('lahore')) cityCounts.lahore += 1;
+      else if (city.includes('karachi')) cityCounts.karachi += 1;
+      else if (city) cityCounts.other += 1;
+    });
+
+    const totalDue = registrations.reduce(
+      (sum, reg: any) => sum + this.parseAmount(reg.amountDue),
+      0,
+    );
+    const walletPaid = registrations.reduce(
+      (sum, reg: any) => sum + this.parseAmount(reg.walletPaid),
+      0,
+    );
+
+    const registrationIds = registrations.map((reg: any) => reg._id);
+    const paymentStatusTotals = {
+      approved: 0,
+      pendingApproval: 0,
+      rejected: 0,
+    };
+    const paymentMethodTotals = {
+      bank_transfer: 0,
+      wallet_only: 0,
+      wallet_plus_bank: 0,
+    };
+
+    let totalPaid = walletPaid;
+
+    if (registrationIds.length > 0) {
+      const statusAgg = await this.paymentModel.aggregate([
+        { $match: { registration: { $in: registrationIds } } },
+        {
+          $group: {
+            _id: '$status',
+            totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      statusAgg.forEach((row: any) => {
+        const status = String(row._id || '');
+        const amount = this.parseAmount(row.totalAmount);
+        const count = this.parseCount(row.count);
+        if (status in paymentStatusTotals) {
+          paymentStatusTotals[status as keyof typeof paymentStatusTotals] = count;
+        }
+        if (status === 'approved') {
+          totalPaid += amount;
+        }
+      });
+
+      const methodAgg = await this.paymentModel.aggregate([
+        {
+          $match: {
+            registration: { $in: registrationIds },
+            status: 'approved',
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$paymentMethod', 'bank_transfer'] },
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ]);
+
+      methodAgg.forEach((row: any) => {
+        const method = String(row._id || 'bank_transfer');
+        if (method in paymentMethodTotals) {
+          paymentMethodTotals[method as keyof typeof paymentMethodTotals] += this.parseAmount(
+            row.totalAmount,
+          );
+        }
+      });
+    }
+
+    const discountTotals = {
+      soloFemale: 0,
+      group: 0,
+      musafir: 0,
+    };
+    registrations.forEach((reg: any) => {
+      const amount = this.parseAmount(reg.discountApplied);
+      if (!amount) return;
+      const type = reg.discountType;
+      if (type && type in discountTotals) {
+        discountTotals[type as keyof typeof discountTotals] += amount;
+      }
+    });
+
+    const totalTarget = totalPaid + totalDue;
+
+    return {
+      daysUntilStart,
+      totalSeats,
+      seatsFilled,
+      maleSeats,
+      femaleSeats,
+      cityCounts,
+      totalPaid,
+      totalDue,
+      totalTarget,
+      paymentMethodTotals,
+      paymentStatusTotals,
+      discountTotals,
+    };
+  }
 
   async approveRegisteration(id: string, comment: string) {
     throw new BadRequestException({
