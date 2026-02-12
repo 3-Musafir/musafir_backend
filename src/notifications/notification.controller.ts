@@ -6,6 +6,7 @@ import {
   Query,
   Req,
   UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/auth.guard';
@@ -30,15 +31,16 @@ export class NotificationController {
     @Req() req?: AuthenticatedRequest,
   ) {
     const user = (req as any)?.user;
-    const parsedRead = read === 'true' ? true : read === 'false' ? false : undefined;
-    if (user?._id) {
-      const plainUser = typeof (user as any).toObject === 'function' ? (user as any).toObject() : user;
-      const profileStatus = buildProfileStatus(plainUser || {});
-      await this.notificationService.ensureProfileCompletionReminder(
-        String(plainUser._id),
-        profileStatus,
-      );
+    if (!user?._id) {
+      throw new UnauthorizedException('User not found');
     }
+    const parsedRead = read === 'true' ? true : read === 'false' ? false : undefined;
+    const plainUser = typeof (user as any).toObject === 'function' ? (user as any).toObject() : user;
+    const profileStatus = buildProfileStatus(plainUser || {});
+    await this.notificationService.ensureProfileCompletionReminder(
+      String(plainUser._id),
+      profileStatus,
+    );
     const data = await this.notificationService.listForUser(user._id, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
@@ -53,6 +55,9 @@ export class NotificationController {
   @ApiOperation({ summary: 'Mark a single notification as read' })
   async markRead(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const user = (req as any)?.user;
+    if (!user?._id) {
+      throw new UnauthorizedException('User not found');
+    }
     const data = await this.notificationService.markRead(user._id, id);
     return successResponse(data, 'Notification marked as read');
   }
@@ -63,6 +68,9 @@ export class NotificationController {
   @ApiOperation({ summary: 'Mark all notifications as read' })
   async markAll(@Req() req: AuthenticatedRequest) {
     const user = (req as any)?.user;
+    if (!user?._id) {
+      throw new UnauthorizedException('User not found');
+    }
     const data = await this.notificationService.markAllRead(user._id);
     return successResponse(data, 'All notifications marked as read');
   }
