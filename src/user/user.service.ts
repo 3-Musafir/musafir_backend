@@ -1146,7 +1146,34 @@ export class UserService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return user;
+
+    const registrations = await this.registrationModel
+      .find({ userId, status: { $in: ['confirmed', 'completed'] } })
+      .populate('flagship', 'tripName startDate endDate status destination')
+      .select('flagship status completedAt')
+      .lean()
+      .exec();
+
+    const flagshipsAttended = registrations
+      .filter((r) => r.flagship)
+      .map((r) => {
+        const f = r.flagship as any;
+        return {
+          _id: f._id,
+          tripName: f.tripName,
+          startDate: f.startDate,
+          endDate: f.endDate,
+          status: f.status,
+          destination: f.destination,
+        };
+      });
+
+    const userObj = user.toObject();
+    return {
+      ...userObj,
+      numberOfFlagshipsAttended: flagshipsAttended.length,
+      flagshipsAttended,
+    };
   }
 
   async updateUser(userId: string, updateUserDto: any) {
