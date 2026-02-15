@@ -19,6 +19,7 @@ import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } f
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { ErrorCode } from 'src/constants/error-codes';
 import { buildProfileStatus, isFlagshipProfileComplete } from 'src/user/profile-status.util';
+import { calcMusafirDiscount } from 'src/discounts/musafir.constants';
 import type {
   GroupLinkStatusDto,
   PendingGroupInviteDto,
@@ -1094,7 +1095,7 @@ export class RegistrationService {
 
     await this.userModel.findByIdAndUpdate(userId, {
       numberOfFlagshipsAttended: attendedCount,
-      discountApplicable: attendedCount * 500,
+      discountApplicable: calcMusafirDiscount(attendedCount),
     });
   }
 

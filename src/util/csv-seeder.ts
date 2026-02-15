@@ -7,6 +7,7 @@ import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
 import { RegistrationSchema } from 'src/flagship/schemas/registration.schema';
 import { UserSchema } from 'src/user/schemas/user.schema';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { calcMusafirDiscount } from 'src/discounts/musafir.constants';
 
 // Models
 let User: any;
@@ -275,7 +276,7 @@ export async function seedFromCSV() {
         update: {
           $set: {
             numberOfFlagshipsAttended: c.count,
-            discountApplicable: c.count * 500,
+            discountApplicable: calcMusafirDiscount(c.count),
           },
         },
       },

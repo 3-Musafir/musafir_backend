@@ -25,6 +25,7 @@ import { isWalletTxIdempotent, WalletService } from 'src/wallet/wallet.service';
 import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils';
 import { PaymentRejectionReason } from './interface/payment-rejection-reason.interface';
 import { RefundRejectionReason } from './interface/refund-rejection-reason.interface';
+import { MUSAFIR_DISCOUNT_MAX, calcMusafirDiscount } from 'src/discounts/musafir.constants';
 
 @Injectable()
 export class PaymentService {
@@ -98,7 +99,7 @@ export class PaymentService {
 
     await this.user.findByIdAndUpdate(userId, {
       numberOfFlagshipsAttended: attendedCount,
-      discountApplicable: attendedCount * 500,
+      discountApplicable: calcMusafirDiscount(attendedCount),
     });
   }
 
@@ -232,6 +233,15 @@ export class PaymentService {
     const soloConfig = this.buildDiscountConfig(flagship?.discounts?.soloFemale);
     const groupConfig = this.buildDiscountConfig(flagship?.discounts?.group);
     const musafirConfig = this.buildDiscountConfig(flagship?.discounts?.musafir);
+    const fixedMusafirConfig = {
+      ...musafirConfig,
+      amount: MUSAFIR_DISCOUNT_MAX,
+      totalValue: Math.max(0, MUSAFIR_DISCOUNT_MAX * musafirConfig.count),
+      remainingValue: Math.max(
+        0,
+        MUSAFIR_DISCOUNT_MAX * musafirConfig.count - musafirConfig.usedValue,
+      ),
+    };
 
     const completedTrips = userId
       ? await this.registrationModel.countDocuments({
@@ -240,9 +250,7 @@ export class PaymentService {
         })
       : 0;
 
-    const baseMusafir = Math.min(completedTrips * 500, 5000);
-    const musafirCap = musafirConfig.amount > 0 ? musafirConfig.amount : 5000;
-    const musafirAmount = Math.min(baseMusafir, musafirCap);
+    const musafirAmount = calcMusafirDiscount(completedTrips);
 
     let groupStatus = { groupSize: 0, allLinked: false };
     const flagshipId =
@@ -277,8 +285,8 @@ export class PaymentService {
       groupConfig.remainingValue >= groupConfig.amount &&
       groupConfig.remainingCount >= 1;
     const musafirRemainingOk =
-      musafirConfig.remainingValue >= musafirAmount &&
-      musafirConfig.remainingCount >= 1;
+      fixedMusafirConfig.remainingValue >= musafirAmount &&
+      fixedMusafirConfig.remainingCount >= 1;
 
     return {
       soloFemale: {
@@ -316,10 +324,10 @@ export class PaymentService {
       musafir: {
         eligible: musafirEligible && musafirRemainingOk,
         amount: musafirAmount,
-        remainingValue: musafirConfig.remainingValue,
-        remainingCount: musafirConfig.remainingCount,
-        totalValue: musafirConfig.totalValue,
-        count: musafirConfig.count,
+        remainingValue: fixedMusafirConfig.remainingValue,
+        remainingCount: fixedMusafirConfig.remainingCount,
+        totalValue: fixedMusafirConfig.totalValue,
+        count: fixedMusafirConfig.count,
         completedTrips,
         reason: !musafirConfig.enabled
           ? 'disabled'
@@ -1454,9 +1462,8 @@ export class PaymentService {
         completedAt: { $exists: true },
       }).exec();
 
-      // Calculate discount: 500 per completed trip
-      const discountPerTrip = 500;
-      const calculatedDiscount = completedRegistrations.length * discountPerTrip;
+      // Calculate discount: 500 per completed trip, capped
+      const calculatedDiscount = calcMusafirDiscount(completedRegistrations.length);
 
       // Persist onto the user document as well
       await this.user.findByIdAndUpdate(userId, {

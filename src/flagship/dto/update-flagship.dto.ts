@@ -177,7 +177,10 @@ class MusafirDiscountDto {
   @IsString()
   budget: string;
 
-  @ApiProperty({ example: '0', description: 'Musafir discount per ticket' })
+  @ApiProperty({
+    example: '5000',
+    description: 'Fixed to Rs.5000 per user cap; ignored if provided.',
+  })
   @IsOptional()
   @IsString()
   amount?: string;

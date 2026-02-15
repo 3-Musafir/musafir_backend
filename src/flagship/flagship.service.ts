@@ -23,6 +23,7 @@ import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { UserService } from 'src/user/user.service';
+import { MUSAFIR_DISCOUNT_MAX } from 'src/discounts/musafir.constants';
 
 @Injectable()
 export class FlagshipService {
@@ -71,7 +72,10 @@ export class FlagshipService {
         : typeKey === 'musafir'
           ? raw?.amount ?? raw?.budget ?? prev?.amount ?? prev?.budget
           : raw?.amount ?? prev?.amount;
-    const amount = this.parseAmount(legacyAmount);
+    const amount =
+      typeKey === 'musafir'
+        ? MUSAFIR_DISCOUNT_MAX
+        : this.parseAmount(legacyAmount);
     const count = this.parseCount(raw?.count ?? prev?.count);
     const usedValue = typeof prev?.usedValue === 'number' ? prev.usedValue : 0;
     const usedCount = typeof prev?.usedCount === 'number' ? prev.usedCount : 0;
