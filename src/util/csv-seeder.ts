@@ -244,6 +244,7 @@ export async function seedFromCSV() {
     const isPaid = parseBool(r.isPaid);
     const statusRaw = (r.status || '').trim() || (isPaid ? 'confirmed' : 'pending');
     const status = statusRaw; // schema allows string
+    const isCompleted = status === 'completed';
 
     await Registration.findOneAndUpdate(
       { legacyRegistrationKey },
@@ -257,6 +258,7 @@ export async function seedFromCSV() {
           flagship: flagship._id,
           isPaid,
           status,
+          ...(isCompleted && { seatLocked: true, completedAt: new Date() }),
         },
       },
       { upsert: true, new: true },
