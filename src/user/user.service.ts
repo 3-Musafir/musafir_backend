@@ -353,6 +353,11 @@ export class UserService {
       legacyUser.verification.VerificationID = v4();
       legacyUser.verification.status = VerificationStatus.UNVERIFIED;
 
+      // Generate a proper referral code if the legacy one is a raw key
+      if (!legacyUser.referralID || legacyUser.referralID.startsWith('USR_')) {
+        legacyUser.referralID = generateUniqueCode();
+      }
+
       if (!legacyUser.referredBy) {
         await this.applyReferralAttribution(legacyUser, createUserDto.referralCode || createUserDto.ref);
       }
