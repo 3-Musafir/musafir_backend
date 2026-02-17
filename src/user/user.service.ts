@@ -294,13 +294,81 @@ export class UserService {
     }
   }
 
+  /**
+   * Find a legacy (phone-only, no email, no password) user by phone number.
+   * Uses last-10-digit suffix matching to normalise between formats like
+   * +923444225504, 03444225504, +0344422550 etc.
+   * Returns null when 0 or >1 matches (ambiguous).
+   */
+  private async findLegacyUserByPhone(phone: string): Promise<any | null> {
+    if (!phone) return null;
+
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) return null;
+
+    const suffix = digits.slice(-10);
+    const escaped = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`${escaped}$`);
+
+    const matches = await this.userModel
+      .find({
+        phone: { $regex: re },
+        $or: [
+          { email: null },
+          { email: { $exists: false } },
+          { email: '' },
+        ],
+        password: { $exists: false },
+      })
+      .limit(5)
+      .exec();
+
+    // Only merge when exactly one match — skip on ambiguity
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   // Create User
   async create(
     createUserDto: any,
-  ): Promise<{ userId: any; verificationId: string }> {
+  ): Promise<{ userId: any; verificationId: string; merged?: boolean }> {
     createUserDto.password = generateRandomPassword();
+    await this.isEmailUnique(createUserDto.email);
+
+    // Check if a legacy phone-only user exists for this phone number.
+    // If so, merge the new signup data into the existing record to
+    // preserve their trip history and verification status.
+    const legacyUser = await this.findLegacyUserByPhone(createUserDto.phone);
+    if (legacyUser) {
+      legacyUser.email = createUserDto.email;
+      legacyUser.fullName = createUserDto.fullName;
+      legacyUser.gender = createUserDto.gender;
+      legacyUser.phone = createUserDto.phone;
+      legacyUser.cnic = createUserDto.cnic || legacyUser.cnic;
+      legacyUser.city = createUserDto.city || legacyUser.city;
+      legacyUser.socialLink = createUserDto.socialLink || legacyUser.socialLink;
+      legacyUser.employmentStatus = createUserDto.employmentStatus || legacyUser.employmentStatus;
+      legacyUser.university = createUserDto.university || legacyUser.university;
+      legacyUser.password = createUserDto.password;
+      legacyUser.emailVerified = false;
+      legacyUser.verification.VerificationID = v4();
+      legacyUser.verification.status = VerificationStatus.UNVERIFIED;
+
+      if (!legacyUser.referredBy) {
+        await this.applyReferralAttribution(legacyUser, createUserDto.referralCode || createUserDto.ref);
+      }
+
+      const password = createUserDto.password;
+      await this.mailService.sendEmailVerification(legacyUser.email, password);
+      const savedUser = await legacyUser.save();
+      return {
+        userId: savedUser._id,
+        verificationId: (savedUser.verification as any).VerificationID,
+        merged: true,
+      };
+    }
+
+    // Normal new-user creation path
     const user = new this.userModel(createUserDto);
-    await this.isEmailUnique(user.email);
     await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
     user.referralID = generateUniqueCode();
     user.verification.VerificationID = v4();
@@ -1055,9 +1123,9 @@ export class UserService {
   }
 
   private async isEmailUnique(email: string) {
-    const user = await this.userModel.findOne({ email, emailVerified: true });
+    const user = await this.userModel.findOne({ email });
     if (user) {
-      throw new BadRequestException('Email already existss.');
+      throw new BadRequestException('Email already exists.');
     }
   }
 
@@ -1187,6 +1255,14 @@ export class UserService {
       user.fullName = updateUserDto.fullName;
     }
     if (updateUserDto.phone) {
+      // Warn if the phone belongs to a legacy user that should be merged first
+      const legacyConflict = await this.findLegacyUserByPhone(updateUserDto.phone);
+      if (legacyConflict && legacyConflict._id.toString() !== userId) {
+        throw new ConflictException(
+          'This phone number is associated with an existing account. ' +
+          'Please sign up with email to merge your accounts, or contact support.',
+        );
+      }
       user.phone = updateUserDto.phone;
     }
     if (updateUserDto.city) {
