@@ -1259,14 +1259,44 @@ export class UserService {
     if (updateUserDto.fullName) {
       user.fullName = updateUserDto.fullName;
     }
+    let merged = false;
     if (updateUserDto.phone) {
-      // Warn if the phone belongs to a legacy user that should be merged first
-      const legacyConflict = await this.findLegacyUserByPhone(updateUserDto.phone);
-      if (legacyConflict && legacyConflict._id.toString() !== userId) {
-        throw new ConflictException(
-          'This phone number is associated with an existing account. ' +
-          'Please sign up with email to merge your accounts, or contact support.',
+      const legacyUser = await this.findLegacyUserByPhone(updateUserDto.phone);
+      if (legacyUser && legacyUser._id.toString() !== userId) {
+        // Merge legacy phone-only user into the current (Google SSO) user.
+        // Transfer registrations so trip history is preserved.
+        await this.registrationModel.updateMany(
+          { userId: legacyUser._id },
+          { $set: { userId: user._id, user: user._id } },
         );
+
+        // Carry over legacy stats and verification
+        if (legacyUser.numberOfFlagshipsAttended) {
+          user.numberOfFlagshipsAttended = legacyUser.numberOfFlagshipsAttended;
+        }
+        if (legacyUser.discountApplicable) {
+          user.discountApplicable = legacyUser.discountApplicable;
+        }
+        if (
+          legacyUser.verification?.status === VerificationStatus.VERIFIED &&
+          user.verification?.status !== VerificationStatus.VERIFIED
+        ) {
+          user.verification.status = VerificationStatus.VERIFIED;
+          user.verification.RequestCall = false;
+        }
+
+        // Use legacy referralID if the current user doesn't have a proper one
+        if (
+          legacyUser.referralID &&
+          !legacyUser.referralID.startsWith('USR_') &&
+          (!user.referralID || user.referralID.startsWith('USR_'))
+        ) {
+          user.referralID = legacyUser.referralID;
+        }
+
+        // Remove the legacy shell user
+        await this.userModel.deleteOne({ _id: legacyUser._id });
+        merged = true;
       }
       user.phone = updateUserDto.phone;
     }
@@ -1295,7 +1325,8 @@ export class UserService {
       user.profileImg = updateUserDto.profileImg;
     }
 
-    return await user.save();
+    const savedUser = await user.save();
+    return merged ? { user: savedUser, merged: true } : savedUser;
   }
 
   async approveUser(userId: string, comment?: string) {

@@ -259,8 +259,12 @@ export class UserController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     try {
-      const updatedUser = await this.userService.updateUser(user._id.toString(), updateUserDto);
-      return successResponse(updatedUser, 'User updated successfully', 200);
+      const result = await this.userService.updateUser(user._id.toString(), updateUserDto);
+      const isMerged = result && typeof result === 'object' && 'merged' in result;
+      const message = isMerged
+        ? 'Account merged successfully — your trip history has been preserved.'
+        : 'User updated successfully';
+      return successResponse(result, message, 200);
     } catch (error) {
       return errorResponse(error);
     }
