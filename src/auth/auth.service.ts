@@ -18,6 +18,7 @@ import { RefreshToken } from './interfaces/refresh-token.interface';
 @Injectable()
 export class AuthService {
   cryptr: any;
+  private static readonly REFRESH_TOKEN_TTL_DAYS = 30;
 
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
@@ -35,23 +36,32 @@ export class AuthService {
   }
 
   async createRefreshToken(req: Request, userId) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + AuthService.REFRESH_TOKEN_TTL_DAYS);
     const refreshToken = new this.refreshTokenModel({
       userId,
       refreshToken: v4(),
       ip: this.getIp(req),
+      expiresAt,
     });
     await refreshToken.save();
     return refreshToken.refreshToken;
   }
 
   async findRefreshToken(token: string) {
-    const refreshToken = await this.refreshTokenModel.findOne({
+    // Atomically find and delete the old token (rotation: single use)
+    const refreshToken = await this.refreshTokenModel.findOneAndDelete({
       refreshToken: token,
+      expiresAt: { $gt: new Date() },
     });
     if (!refreshToken) {
       throw new UnauthorizedException('User has been logged out.');
     }
     return refreshToken.userId;
+  }
+
+  async revokeAllUserTokens(userId: string) {
+    await this.refreshTokenModel.deleteMany({ userId });
   }
 
   async validateUser(jwtPayload: JwtPayload): Promise<any> {

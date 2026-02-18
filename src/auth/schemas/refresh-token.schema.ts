@@ -13,7 +13,12 @@ export const RefreshTokenSchema = new Schema ({
     ip: {
         type: String,
         required: true,
-    }
+    },
+    expiresAt: {
+        type: Date,
+        required: true,
+        index: { expires: 0 },
+    },
 },
 {
     versionKey: false,

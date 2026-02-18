@@ -388,6 +388,32 @@ export class UserService {
     };
   }
 
+  // Verify Google ID token and create/login user
+  async verifyGoogleAndCreateUser(idToken: string, req: Request) {
+    if (!idToken) {
+      throw new BadRequestException('Google ID token is required.');
+    }
+    const { OAuth2Client } = require('google-auth-library');
+    const client = new OAuth2Client(process.env.CLIENTID);
+    let payload: any;
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: process.env.CLIENTID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new BadRequestException('Invalid or expired Google ID token.');
+    }
+    if (!payload?.email) {
+      throw new BadRequestException('Google token missing email claim.');
+    }
+    return this.createEmailUser(
+      { email: payload.email, googleId: payload.sub, fullName: payload.name || '' },
+      req,
+    );
+  }
+
   // Create Email User
   async createEmailUser(userDto: EmailUserDto, req: Request) {
     let user = await this.userModel.findOne({ email: userDto.email });
@@ -621,7 +647,10 @@ export class UserService {
   }
 
   // Refresh Access Token
-  async refreshAccessToken(refreshAccessTokenDto: RefreshAccessTokenDto) {
+  async refreshAccessToken(
+    refreshAccessTokenDto: RefreshAccessTokenDto,
+    req?: Request,
+  ) {
     const userId = await this.authService.findRefreshToken(
       refreshAccessTokenDto.refreshToken,
     );
@@ -631,7 +660,15 @@ export class UserService {
     }
     return {
       accessToken: await this.authService.createAccessToken(String(user._id)),
+      refreshToken: req
+        ? await this.authService.createRefreshToken(req, String(user._id))
+        : undefined,
     };
+  }
+
+  // Logout — revoke all refresh tokens for the user
+  async logout(userId: string) {
+    await this.authService.revokeAllUserTokens(userId);
   }
 
   // Forget Password

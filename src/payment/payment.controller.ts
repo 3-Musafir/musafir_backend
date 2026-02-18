@@ -35,6 +35,7 @@ export class PaymentController {
   constructor(private readonly paymentService: PaymentService) { }
 
   @Get('get-user-discount/:userId')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get User Discount' })
   @ApiOkResponse({})
@@ -43,6 +44,7 @@ export class PaymentController {
   }
 
   @Get('get-user-discount-by-registration/:registrationId')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get User Discount by Registration ID' })
   @ApiOkResponse({})
@@ -60,6 +62,8 @@ export class PaymentController {
   }
 
   @Get('get-bank-accounts')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Bank Accounts' })
   @ApiOkResponse({})
@@ -68,28 +72,31 @@ export class PaymentController {
   }
 
   @Get('get-payment/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Payment ID' })
   @ApiOkResponse({})
-  @Roles('admin')
   getPayment(@Param('id') id: string) {
     return this.paymentService.getPayment(id);
   }
 
   @Get('get-pending-payments')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Pending Payments' })
   @ApiOkResponse({})
-  @Roles('admin')
   getPendingPayments() {
     return this.paymentService.getPendingPayments();
   }
 
   @Get('get-completed-payments')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Completed Payments' })
   @ApiOkResponse({})
-  @Roles('admin')
   getCompletedPayments() {
     return this.paymentService.getCompletedPayments();
   }
@@ -119,6 +126,8 @@ export class PaymentController {
   }
 
   @Post('create-bank-account')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create Bank Account' })
   @ApiOkResponse({})
@@ -154,28 +163,31 @@ export class PaymentController {
   }
 
   @Get('get-refunds')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get Refunds' })
   @ApiOkResponse({})
-  @Roles('admin')
   getRefunds(@Query() query: GetRefundsQueryDto) {
     return this.paymentService.getRefunds(query);
   }
 
   @Get('rejection-reasons')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get active payment rejection reasons' })
   @ApiOkResponse({})
-  @Roles('admin')
   getRejectionReasons() {
     return this.paymentService.getRejectionReasons();
   }
 
   @Get('refund-rejection-reasons')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get active refund rejection reasons' })
   @ApiOkResponse({})
-  @Roles('admin')
   getRefundRejectionReasons() {
     return this.paymentService.getRefundRejectionReasons();
   }
@@ -199,46 +211,51 @@ export class PaymentController {
   }
 
   @Patch('approve-refund/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Refund' })
   @ApiOkResponse({})
-  @Roles('admin')
   approveRefund(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.approveRefund(id, { credit: true, admin });
   }
 
   @Patch('approve-refund-no-credit/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Refund (defer wallet credit)' })
   @ApiOkResponse({})
-  @Roles('admin')
   approveRefundNoCredit(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.approveRefund(id, { credit: false, admin });
   }
 
   @Patch('post-refund-credit/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Post wallet credit for an approved refund' })
   @ApiOkResponse({})
-  @Roles('admin')
   postRefundCredit(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.postRefundCredit(id, admin);
   }
 
   @Patch('post-refund-bank/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Post bank payout for an approved refund' })
   @ApiOkResponse({})
-  @Roles('admin')
   postRefundBank(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.postRefundBank(id, admin);
   }
 
   @Patch('reject-refund/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject Refund' })
   @ApiOkResponse({})
-  @Roles('admin')
   rejectRefund(
     @Param('id') id: string,
     @Body() body: RejectRefundDto,
@@ -262,19 +279,21 @@ export class PaymentController {
   }
 
   @Patch('approve-payment/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve Payment' })
   @ApiOkResponse({})
-  @Roles('admin')
   approvePayment(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.approvePayment(id, admin);
   }
 
   @Patch('reject-payment/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject Payment' })
   @ApiOkResponse({})
-  @Roles('admin')
   rejectPayment(
     @Param('id') id: string,
     @Body() body: RejectPaymentDto,

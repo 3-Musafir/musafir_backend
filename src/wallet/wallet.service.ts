@@ -152,15 +152,20 @@ export class WalletService {
         });
       }
     } else {
-      await this.walletBalanceModel.findOneAndUpdate(
+      const updated = await this.walletBalanceModel.findOneAndUpdate(
         { userId: tx.userId },
         {
           $inc: { balance: reverseDelta },
           $set: { updatedAt: new Date() },
-          $setOnInsert: { userId: tx.userId },
         },
-        { upsert: true },
+        { new: true },
       );
+      if (!updated) {
+        throw new BadRequestException({
+          message: 'Wallet balance record not found for user.',
+          code: 'wallet_void_no_balance',
+        });
+      }
     }
 
     tx.status = 'void';

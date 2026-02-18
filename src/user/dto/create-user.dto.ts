@@ -143,17 +143,27 @@ class BaseUserDto {
   @IsOptional()
   @IsString()
   readonly dateOfBirth?: string;
+
+  @ApiProperty({
+    example: '03001234567',
+    description: 'WhatsApp phone number of the User',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly whatsappPhone?: string;
 }
 
 export class CreateUserDto extends BaseUserDto {
   @ApiProperty({
     example: 'secret password change me!',
-    description: 'The password of the User',
+    description: 'The password of the User (optional — auto-generated if omitted)',
     format: 'string',
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  readonly password: string;
+  readonly password?: string;
 }
 
 export class CreateGoogleUserDto extends BaseUserDto {

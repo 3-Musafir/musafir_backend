@@ -64,9 +64,9 @@ export class UserController {
   @Post('google')
   async googleLogin(
     @Req() req: Request,
-    @Body() body: { email: string; googleId: string; fullName: string },
+    @Body() body: { idToken: string },
   ) {
-    return await this.userService.createEmailUser(body, req);
+    return await this.userService.verifyGoogleAndCreateUser(body.idToken, req);
   }
 
   @Public()
@@ -110,9 +110,21 @@ export class UserController {
   @ApiOperation({ summary: 'Refresh Access Token with refresh token' })
   @ApiCreatedResponse({})
   async refreshAccessToken(
+    @Req() req: Request,
     @Body() refreshAccessTokenDto: RefreshAccessTokenDto,
   ) {
-    return await this.userService.refreshAccessToken(refreshAccessTokenDto);
+    return await this.userService.refreshAccessToken(refreshAccessTokenDto, req);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout user and revoke all refresh tokens' })
+  @ApiBearerAuth()
+  @ApiOkResponse({})
+  async logout(@GetUser() user: User) {
+    await this.userService.logout(user._id.toString());
+    return successResponse({}, 'Logged out successfully', 200);
   }
 
   @Public()
