@@ -1033,8 +1033,19 @@ export class RegistrationService {
     const bucket = resolveSeatBucket(
       registration.userGender || (userDoc as any)?.gender || user?.gender,
     );
-    const remainingSeats = getRemainingSeatsForBucket(flagship, bucket);
-    if (remainingSeats <= 0) {
+
+    // Atomic seat availability check: use findOneAndUpdate with $expr to
+    // atomically verify remaining seats > 0 and decrement waitlisted count.
+    // This prevents two concurrent acceptances from both passing the check.
+    const seatExpr = bucket === 'female'
+      ? { $lt: ['$confirmedFemaleCount', '$femaleSeats'] }
+      : { $lt: ['$confirmedMaleCount', '$maleSeats'] };
+    const seatClaim = await this.flagshipModel.findOneAndUpdate(
+      { _id: flagshipId, $expr: seatExpr },
+      { $inc: getSeatCounterUpdate(bucket, 'waitlisted', -1) },
+      { new: true },
+    );
+    if (!seatClaim) {
       await this.registrationModel.findByIdAndUpdate(registration._id, {
         $set: {
           waitlistOfferStatus: 'expired',
@@ -1078,13 +1089,14 @@ export class RegistrationService {
     );
 
     if (!updated) {
+      // Registration state changed concurrently — roll back the waitlist decrement
+      await this.adjustFlagshipSeatCount(flagshipId, bucket, 'waitlisted', 1);
       throw new BadRequestException({
         message: 'Waitlist offer could not be accepted. Please retry.',
         code: 'waitlist_offer_state_changed',
       });
     }
 
-    await this.adjustFlagshipSeatCount(flagshipId, bucket, 'waitlisted', -1);
     return updated;
   }
   private async updateUserTripStats(userId: string): Promise<void> {

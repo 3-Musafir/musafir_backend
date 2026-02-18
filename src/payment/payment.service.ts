@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import mongoose, { Connection, Model, Types } from 'mongoose';
 import { BankAccount, Payment } from './interface/payment.interface';
 import {
   CreateBankAccountDto,
@@ -51,6 +51,7 @@ export class PaymentService {
     private readonly notificationService: NotificationService,
     private readonly walletService: WalletService,
     private readonly refundSettlementService: RefundSettlementService,
+    @InjectConnection() private readonly connection: Connection,
   ) { }
 
   private assertUserVerifiedForPayment(user: User): void {
@@ -340,15 +341,21 @@ export class PaymentService {
     };
   }
 
-  private async tryLockSeat(flagshipId: string, bucket: 'male' | 'female'): Promise<boolean> {
+  private async tryLockSeat(
+    flagshipId: string,
+    bucket: 'male' | 'female',
+    session?: mongoose.ClientSession,
+  ): Promise<boolean> {
     const expr = bucket === 'female'
       ? { $lt: ['$confirmedFemaleCount', '$femaleSeats'] }
       : { $lt: ['$confirmedMaleCount', '$maleSeats'] };
     const update = { $inc: getSeatCounterUpdate(bucket, 'confirmed', 1) };
+    const opts: any = { new: true };
+    if (session) opts.session = session;
     const updated = await this.flagshipModel.findOneAndUpdate(
       { _id: flagshipId, $expr: expr },
       update,
-      { new: true },
+      opts,
     );
     return Boolean(updated);
   }
@@ -399,7 +406,10 @@ export class PaymentService {
     }
   }
 
-  private async releaseDiscountForRegistration(registration: any): Promise<void> {
+  private async releaseDiscountForRegistration(
+    registration: any,
+    session?: mongoose.ClientSession,
+  ): Promise<void> {
     const discountType = registration?.discountType;
     const discountApplied = Number(registration?.discountApplied || 0);
     if (!discountType || discountApplied <= 0) return;
@@ -414,6 +424,7 @@ export class PaymentService {
           [`discounts.${discountType}.usedCount`]: -1,
         },
       },
+      session ? { session } : undefined,
     );
 
     const price = Number(registration?.price || 0);
@@ -426,6 +437,7 @@ export class PaymentService {
     await this.registrationModel.updateOne(
       { _id: registration._id },
       { $set: { discountApplied: 0, discountType: null, amountDue } },
+      session ? { session } : undefined,
     );
   }
 
@@ -2306,92 +2318,114 @@ export class PaymentService {
         );
         remainingDue = newAmountDue;
 
-        const seatAlreadyLocked = Boolean(registration?.seatLocked);
-        if (!seatAlreadyLocked) {
-          const flagshipId = registration.flagship || registration.flagshipId;
-          const userGender = registration.userGender || registrationUser?.gender;
-          const bucket = resolveSeatBucket(userGender);
-          const seatLocked = await this.tryLockSeat(String(flagshipId), bucket);
-          if (!seatLocked) {
-            const seatFullReason = await this.resolveRejectionReason('seats_full', {
-              requireActive: false,
-            });
-            const seatFullNote = this.buildRejectionPublicNote(seatFullReason);
-            await this.paymentModel.findByIdAndUpdate(payment._id, {
-              status: 'rejected',
-              rejectionCode: 'seats_full',
-              rejectionPublicNote: seatFullNote,
-            });
-            await this.registrationModel.findByIdAndUpdate(payment.registration, {
-              status: 'waitlisted',
-              waitlistAt: new Date(),
-              waitlistOfferStatus: 'none',
-              waitlistOfferResponse: null,
-              waitlistOfferSentAt: null,
-              waitlistOfferAcceptedAt: null,
-              waitlistOfferExpiresAt: null,
-              paymentId: null,
-              payment: null,
-              latestPaymentId: payment._id,
-              latestPaymentStatus: 'rejected',
-              latestPaymentCreatedAt: payment.createdAt,
-              latestPaymentType: payment.paymentType,
-            });
-            await this.releaseDiscountForRegistration(registration);
-            await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
-              $inc: getSeatCounterUpdate(bucket, 'waitlisted', 1),
-            });
-            if (registrationUserId) {
-              try {
-                await this.notificationService.createForUser(registrationUserId, {
-                  title: 'Seats full - moved to waitlist',
-                  message: 'Seats are currently full. You have been moved to the waitlist and will be notified when a seat opens.',
-                  type: 'waitlist',
-                  link: '/passport',
-                  metadata: {
-                    registrationId: registration?._id?.toString?.(),
-                    flagshipId: String(flagshipId),
-                  },
+        // Wrap seat lock + registration update + payment save in a transaction
+        // so they either all commit or all roll back atomically.
+        const txnSession = await this.connection.startSession();
+        try {
+          await txnSession.withTransaction(async () => {
+            const seatAlreadyLocked = Boolean(registration?.seatLocked);
+            if (!seatAlreadyLocked) {
+              const flagshipId = registration.flagship || registration.flagshipId;
+              const userGender = registration.userGender || registrationUser?.gender;
+              const bucket = resolveSeatBucket(userGender);
+              const seatLocked = await this.tryLockSeat(String(flagshipId), bucket, txnSession);
+              if (!seatLocked) {
+                const seatFullReason = await this.resolveRejectionReason('seats_full', {
+                  requireActive: false,
                 });
-              } catch (error) {
-                console.log('Failed to notify user about waitlist move:', error);
+                const seatFullNote = this.buildRejectionPublicNote(seatFullReason);
+                await this.paymentModel.findByIdAndUpdate(payment._id, {
+                  status: 'rejected',
+                  rejectionCode: 'seats_full',
+                  rejectionPublicNote: seatFullNote,
+                }, { session: txnSession });
+                await this.registrationModel.findByIdAndUpdate(payment.registration, {
+                  status: 'waitlisted',
+                  waitlistAt: new Date(),
+                  waitlistOfferStatus: 'none',
+                  waitlistOfferResponse: null,
+                  waitlistOfferSentAt: null,
+                  waitlistOfferAcceptedAt: null,
+                  waitlistOfferExpiresAt: null,
+                  paymentId: null,
+                  payment: null,
+                  latestPaymentId: payment._id,
+                  latestPaymentStatus: 'rejected',
+                  latestPaymentCreatedAt: payment.createdAt,
+                  latestPaymentType: payment.paymentType,
+                }, { session: txnSession });
+                await this.releaseDiscountForRegistration(registration, txnSession);
+                await this.flagshipModel.findByIdAndUpdate(String(flagshipId), {
+                  $inc: getSeatCounterUpdate(bucket, 'waitlisted', 1),
+                }, { session: txnSession });
+                if (registrationUserId) {
+                  try {
+                    await this.notificationService.createForUser(registrationUserId, {
+                      title: 'Seats full - moved to waitlist',
+                      message: 'Seats are currently full. You have been moved to the waitlist and will be notified when a seat opens.',
+                      type: 'waitlist',
+                      link: '/passport',
+                      metadata: {
+                        registrationId: registration?._id?.toString?.(),
+                        flagshipId: String(flagshipId),
+                      },
+                    });
+                  } catch (error) {
+                    console.log('Failed to notify user about waitlist move:', error);
+                  }
+                }
+                throw new BadRequestException({
+                  message: 'Seats are full. User moved to waitlist.',
+                  code: 'seats_full_waitlisted',
+                });
               }
             }
-            throw new BadRequestException({
-              message: 'Seats are full. User moved to waitlist.',
-              code: 'seats_full_waitlisted',
-            });
-          }
-        }
 
-        const registrationUpdate: any = {
-          isPaid: true,
-          amountDue: newAmountDue,
-          discountApplied: updatedDiscountApplied,
-          status: 'confirmed',
-          seatLocked: true,
-          seatLockedAt: new Date(),
-          payment: payment._id,
-          paymentId: payment._id,
-          latestPaymentId: payment._id,
-          latestPaymentStatus: 'approved',
-          latestPaymentCreatedAt: payment.createdAt,
-          latestPaymentType: payment.paymentType,
-        };
-        if (walletToApply > 0) {
-          registrationUpdate.walletPaid = Math.max(
-            0,
-            currentWalletPaid + walletToApply,
-          );
-        }
+            const registrationUpdate: any = {
+              isPaid: true,
+              amountDue: newAmountDue,
+              discountApplied: updatedDiscountApplied,
+              status: 'confirmed',
+              seatLocked: true,
+              seatLockedAt: new Date(),
+              payment: payment._id,
+              paymentId: payment._id,
+              latestPaymentId: payment._id,
+              latestPaymentStatus: 'approved',
+              latestPaymentCreatedAt: payment.createdAt,
+              latestPaymentType: payment.paymentType,
+            };
+            if (walletToApply > 0) {
+              registrationUpdate.walletPaid = Math.max(
+                0,
+                currentWalletPaid + walletToApply,
+              );
+            }
 
-        await this.registrationModel.findByIdAndUpdate(payment.registration, registrationUpdate);
+            await this.registrationModel.findByIdAndUpdate(
+              payment.registration,
+              registrationUpdate,
+              { session: txnSession },
+            );
 
-        if (walletToApply > 0) {
-          payment.walletApplied = Math.max(
-            paymentWalletApplied,
-            paymentWalletRequested,
-          );
+            payment.status = 'approved';
+            if (typeof remainingDue === 'number') {
+              (payment as any).remainingDueAtDecision = remainingDue;
+            }
+            if (this.isAdminUser(admin)) {
+              payment.reviewedBy = admin?._id as any;
+              payment.reviewedAt = new Date();
+            }
+            if (walletToApply > 0) {
+              payment.walletApplied = Math.max(
+                paymentWalletApplied,
+                paymentWalletRequested,
+              );
+            }
+            await payment.save({ session: txnSession });
+          });
+        } finally {
+          await txnSession.endSession();
         }
       } catch (err) {
         if (walletDebited && walletSourceId) {
@@ -2411,16 +2445,6 @@ export class PaymentService {
         throw err;
       }
     }
-
-    payment.status = 'approved';
-    if (typeof remainingDue === 'number') {
-      (payment as any).remainingDueAtDecision = remainingDue;
-    }
-    if (this.isAdminUser(admin)) {
-      payment.reviewedBy = admin?._id as any;
-      payment.reviewedAt = new Date();
-    }
-    await payment.save();
 
     // Send payment approved email if user has an email
     try {
