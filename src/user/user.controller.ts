@@ -20,7 +20,7 @@ import {
   UploadedFile,
   Query,
 } from '@nestjs/common';
-import { CreateGoogleUserDto } from './dto/create-user.dto';
+import { CreateUserDto, CreateGoogleUserDto } from './dto/create-user.dto';
 import { VerifyUuidDto } from './dto/verify-uuid.dto';
 import { UserService } from './user.service';
 import { RefreshAccessTokenDto } from './dto/refresh-access-token.dto';
@@ -56,7 +56,7 @@ export class UserController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register user' })
   @ApiCreatedResponse({})
-  async register(@Body() createUserDto: any) {
+  async register(@Body() createUserDto: CreateUserDto) {
     return await this.userService.create(createUserDto);
   }
 

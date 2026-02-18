@@ -19,7 +19,7 @@ import { StorageService } from '../storage/storageService';
 import { AuthService } from './../auth/auth.service';
 import { MailService } from './../mail/mail.service';
 import { CreateForgotPasswordDto } from './dto/create-forgot-password.dto';
-import { CreateGoogleUserDto, EmailUserDto } from './dto/create-user.dto';
+import { CreateUserDto, CreateGoogleUserDto, EmailUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshAccessTokenDto } from './dto/refresh-access-token.dto';
 import {
@@ -329,26 +329,26 @@ export class UserService {
 
   // Create User
   async create(
-    createUserDto: any,
+    createUserDto: CreateUserDto,
   ): Promise<{ userId: any; verificationId: string; merged?: boolean }> {
-    createUserDto.password = generateRandomPassword();
-    await this.isEmailUnique(createUserDto.email);
+    const userData = { ...createUserDto, password: generateRandomPassword() };
+    await this.isEmailUnique(userData.email);
 
     // Check if a legacy phone-only user exists for this phone number.
     // If so, merge the new signup data into the existing record to
     // preserve their trip history and verification status.
-    const legacyUser = await this.findLegacyUserByPhone(createUserDto.phone);
+    const legacyUser = await this.findLegacyUserByPhone(userData.phone);
     if (legacyUser) {
-      legacyUser.email = createUserDto.email;
-      legacyUser.fullName = createUserDto.fullName;
-      legacyUser.gender = createUserDto.gender;
-      legacyUser.phone = createUserDto.phone;
-      legacyUser.cnic = createUserDto.cnic || legacyUser.cnic;
-      legacyUser.city = createUserDto.city || legacyUser.city;
-      legacyUser.socialLink = createUserDto.socialLink || legacyUser.socialLink;
-      legacyUser.employmentStatus = createUserDto.employmentStatus || legacyUser.employmentStatus;
-      legacyUser.university = createUserDto.university || legacyUser.university;
-      legacyUser.password = createUserDto.password;
+      legacyUser.email = userData.email;
+      legacyUser.fullName = userData.fullName;
+      legacyUser.gender = userData.gender;
+      legacyUser.phone = userData.phone;
+      legacyUser.cnic = userData.cnic || legacyUser.cnic;
+      legacyUser.city = userData.city || legacyUser.city;
+      legacyUser.socialLink = userData.socialLink || legacyUser.socialLink;
+      legacyUser.employmentStatus = userData.employmentStatus || legacyUser.employmentStatus;
+      legacyUser.university = userData.university || legacyUser.university;
+      legacyUser.password = userData.password;
       legacyUser.emailVerified = false;
       legacyUser.verification.VerificationID = v4();
       legacyUser.verification.status = VerificationStatus.UNVERIFIED;
@@ -359,10 +359,10 @@ export class UserService {
       }
 
       if (!legacyUser.referredBy) {
-        await this.applyReferralAttribution(legacyUser, createUserDto.referralCode || createUserDto.ref);
+        await this.applyReferralAttribution(legacyUser, userData.referralCode || userData.ref);
       }
 
-      const password = createUserDto.password;
+      const password = userData.password;
       await this.mailService.sendEmailVerification(legacyUser.email, password);
       const savedUser = await legacyUser.save();
       return {
@@ -373,12 +373,12 @@ export class UserService {
     }
 
     // Normal new-user creation path
-    const user = new this.userModel(createUserDto);
-    await this.applyReferralAttribution(user as any, createUserDto.referralCode || createUserDto.ref);
+    const user = new this.userModel(userData);
+    await this.applyReferralAttribution(user as any, userData.referralCode || userData.ref);
     user.referralID = generateUniqueCode();
     user.verification.VerificationID = v4();
     user.verification.status = VerificationStatus.UNVERIFIED;
-    const password = createUserDto.password;
+    const password = userData.password;
     await this.mailService.sendEmailVerification(user.email, password);
     const savedUser = await user.save();
     await this.creditSignupReferrerIfEligible(savedUser as any);

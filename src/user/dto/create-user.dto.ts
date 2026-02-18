@@ -107,6 +107,42 @@ class BaseUserDto {
   @IsString()
   @IsEmail()
   readonly email: string;
+
+  @ApiProperty({
+    example: 'Islamabad',
+    description: 'City of the User',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly city?: string;
+
+  @ApiProperty({
+    example: 'ABC123',
+    description: 'Referral code used during signup',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly referralCode?: string;
+
+  @ApiProperty({
+    example: 'ABC123',
+    description: 'Referral code (alias)',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly ref?: string;
+
+  @ApiProperty({
+    example: '1995-06-15',
+    description: 'Date of birth of the User',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  readonly dateOfBirth?: string;
 }
 
 export class CreateUserDto extends BaseUserDto {
