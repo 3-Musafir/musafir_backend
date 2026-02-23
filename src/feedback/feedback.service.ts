@@ -11,6 +11,7 @@ import { Feedback } from './interfaces/feedback.interface';
 import { CreateFeedbackDto } from './dto/createFeedback.dto';
 import { RegistrationService } from 'src/registration/registration.service';
 import { RatingService } from 'src/Rating/rating.service';
+import { User } from 'src/user/interfaces/user.interface';
 
 
 @Injectable()
@@ -21,13 +22,13 @@ export class FeedbackService {
     private readonly ratingService: RatingService,
   ) { }
 
-  async createFeedback(feedback: CreateFeedbackDto, registrationId: string): Promise<{ message: string }> {
+  async createFeedback(feedback: CreateFeedbackDto, registrationId: string, user: User): Promise<{ message: string }> {
     try {
       if (!registrationId) {
         throw new BadRequestException('Registration ID is required');
       }
 
-      const registration = await this.registrationService.getRegistrationById(registrationId);
+      const registration = await this.registrationService.getRegistrationById(registrationId, user);
       if (!registration) {
         throw new NotFoundException(`Registration with ID ${registrationId} not found`);
       }

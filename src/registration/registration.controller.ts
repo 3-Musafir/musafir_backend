@@ -80,12 +80,17 @@ export class RegistrationController {
     @UseGuards(JwtAuthGuard)
     @Get('/getRegistrationById/:registrationId')
     async getRegistrationById(
+        @GetUser() user: User,
         @Param('registrationId') registrationId: string,
     ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
         return {
             statusCode: 200,
             message: "Registration fetched successfully",
-            data: await this.registrationService.getRegistrationById(registrationId)
+            data: await this.registrationService.getRegistrationById(registrationId, user)
         }
     }
 

@@ -1476,7 +1476,7 @@ export class RegistrationService {
     }
   }
 
-  async getRegistrationById(registrationId: string) {
+  async getRegistrationById(registrationId: string, requestingUser: User) {
     try {
       if (!registrationId) {
         throw new Error("Registration ID is required");
@@ -1491,6 +1491,19 @@ export class RegistrationService {
         })
         .exec();
 
+      if (!registration) {
+        throw new NotFoundException('Registration not found');
+      }
+
+      // Ownership check: only the registration owner or an admin may view it
+      const isAdmin = Array.isArray(requestingUser.roles) && requestingUser.roles.includes('admin');
+      const ownerId = (registration.userId ?? (registration as any).user?._id)?.toString();
+      const requesterId = requestingUser._id?.toString();
+
+      if (!isAdmin && ownerId !== requesterId) {
+        throw new ForbiddenException('You do not have permission to view this registration.');
+      }
+
       if (registration?.flagship?.images && registration.flagship.images.length > 0) {
         registration.flagship.images = await Promise.all(
           registration.flagship.images.map(async (imageKey) => {
@@ -1501,6 +1514,9 @@ export class RegistrationService {
 
       return registration;
     } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
       throw new Error(`Failed to fetch registration data: ${error.message}`);
     }
   }
@@ -1665,7 +1681,7 @@ export class RegistrationService {
 
   async sendReEvaluateRequestToJury(registrationId: string, user: User) {
     try {
-      const registration = await this.getRegistrationById(registrationId);
+      const registration = await this.getRegistrationById(registrationId, user);
       const tripName = typeof registration.flagshipId === 'object' ? registration.flagshipId.tripName : '';
       await this.mailService.sendReEvaluateRequestToJury(registrationId, tripName, user.fullName, user.email, user.phone, user?.city);
       return "Re-evaluate request sent to jury successfully.";
