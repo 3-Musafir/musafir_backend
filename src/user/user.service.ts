@@ -920,32 +920,132 @@ export class UserService {
     await this.creditVerificationReferrersIfEligible(savedUser as any);
     await this.promoteUserRegistrationsToPayment(savedUser._id.toString());
 
-    // Send verification approved email if user has an email
+    await this.sendVerificationApprovedComms(
+      savedUser as UserDocument,
+      options?.source || 'system',
+    );
+
+    return savedUser;
+  }
+
+  async setUserVerifiedWithoutCredits(
+    userId: string,
+    options?: {
+      method?: string;
+      flagshipId?: string;
+      source?: string;
+      adminId?: string;
+      notify?: boolean;
+    },
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.verification) {
+      (user as any).verification = {
+        status: VerificationStatus.UNVERIFIED,
+        RequestCall: false,
+      };
+    }
+    const method = options?.method || 'admin_manual_payment';
+    user.verification.status = VerificationStatus.VERIFIED;
+    user.verification.VerificationDate = new Date();
+    user.verification.method = method;
+    if (Object.prototype.hasOwnProperty.call(options || {}, 'flagshipId')) {
+      user.verification.flagshipId = options?.flagshipId;
+    }
+    this.appendVerificationHistory(user, {
+      status: VerificationStatus.VERIFIED,
+      method,
+      source: options?.source || 'admin_manual_payment',
+      reason: options?.adminId
+        ? `auto-verified via manual payment by admin:${options.adminId}`
+        : 'auto-verified via manual payment',
+      flagshipId: options?.flagshipId,
+    });
+    user.markModified('verification');
+    const savedUser = await user.save();
+    await this.promoteUserRegistrationsToPayment(savedUser._id.toString());
+
+    if (options?.notify !== false) {
+      await this.sendVerificationApprovedComms(
+        savedUser as UserDocument,
+        options?.source || 'admin_manual_payment',
+      );
+    }
+
+    return savedUser;
+  }
+
+  async notifyVerificationApproved(userId: string, source?: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) return;
+    await this.sendVerificationApprovedComms(user as UserDocument, source || 'admin_manual_payment');
+  }
+
+  async rollbackUserVerification(
+    userId: string,
+    snapshot: {
+      status?: VerificationStatus;
+      method?: string;
+      verificationDate?: Date;
+      flagshipId?: string;
+    },
+    options?: { adminId?: string; source?: string; reason?: string },
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      return null;
+    }
+    if (!user.verification) {
+      (user as any).verification = {
+        status: VerificationStatus.UNVERIFIED,
+        RequestCall: false,
+      };
+    }
+    user.verification.status = snapshot.status || VerificationStatus.UNVERIFIED;
+    user.verification.method = snapshot.method;
+    user.verification.VerificationDate = snapshot.verificationDate;
+    if (Object.prototype.hasOwnProperty.call(snapshot || {}, 'flagshipId')) {
+      user.verification.flagshipId = snapshot.flagshipId;
+    }
+    this.appendVerificationHistory(user, {
+      status: user.verification.status,
+      method: user.verification.method,
+      source: options?.source || 'admin_manual_payment_rollback',
+      reason: options?.reason || (options?.adminId
+        ? `rollback after manual payment failure by admin:${options.adminId}`
+        : 'rollback after manual payment failure'),
+      flagshipId: snapshot.flagshipId,
+    });
+    user.markModified('verification');
+    return user.save();
+  }
+
+  private async sendVerificationApprovedComms(user: UserDocument, source?: string) {
     if (user.email) {
       try {
         await this.mailService.sendVerificationApprovedEmail(
           user.email,
-          user.fullName || 'Musafir'
+          user.fullName || 'Musafir',
         );
       } catch (error) {
         console.log('Failed to send verification approved email:', error);
-        // Don't throw error - email failure shouldn't prevent user verification
       }
     }
 
     try {
       await this.notificationService.ensureVerificationStatusNotification(
-        savedUser._id.toString(),
+        user._id.toString(),
         VerificationStatus.VERIFIED,
         {
-          metadata: { source: options?.source || 'system' },
+          metadata: { source: source || 'system' },
         },
       );
     } catch (error) {
       console.log('Failed to send verification status notification:', error);
     }
-
-    return savedUser;
   }
 
   async requestVerification(id: string, verifyUser: VerifyUserDto) {

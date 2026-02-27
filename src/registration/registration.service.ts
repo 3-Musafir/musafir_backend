@@ -18,6 +18,7 @@ import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { ErrorCode } from 'src/constants/error-codes';
+import { computeSettlementStatus } from './settlement-status.util';
 import { buildProfileStatus, isFlagshipProfileComplete } from 'src/user/profile-status.util';
 import { calcMusafirDiscount } from 'src/discounts/musafir.constants';
 import type {
@@ -491,13 +492,23 @@ export class RegistrationService {
 
   private async expireWaitlistOffers(flagshipId: string) {
     const now = new Date();
+    const filter = {
+      flagship: flagshipId,
+      status: 'waitlisted',
+      waitlistOfferStatus: 'offered',
+      waitlistOfferExpiresAt: { $lte: now },
+    };
+    const candidates = await this.registrationModel
+      .find(filter)
+      .select('_id amountDue hasApprovedPayment cancelledAt refundStatus')
+      .lean()
+      .exec();
+    if (candidates.length === 0) {
+      return;
+    }
+
     await this.registrationModel.updateMany(
-      {
-        flagship: flagshipId,
-        status: 'waitlisted',
-        waitlistOfferStatus: 'offered',
-        waitlistOfferExpiresAt: { $lte: now },
-      },
+      { _id: { $in: candidates.map((c: any) => c._id) } },
       {
         $set: {
           waitlistOfferStatus: 'expired',
@@ -508,6 +519,21 @@ export class RegistrationService {
           waitlistOfferExpiresAt: null,
         },
       },
+    );
+
+    await Promise.all(
+      candidates.map((registration: any) => {
+        const settlementStatus = computeSettlementStatus({
+          amountDue: registration.amountDue,
+          hasApprovedPayment: Boolean(registration.hasApprovedPayment),
+          cancelledAt: registration.cancelledAt,
+          refundStatus: registration.refundStatus,
+        });
+        return this.registrationModel.updateOne(
+          { _id: registration._id },
+          { $set: { settlementStatus } },
+        );
+      }),
     );
   }
 
@@ -612,6 +638,26 @@ export class RegistrationService {
     const numeric = value.toString().replace(/[^0-9.-]/g, '');
     const parsed = Number(numeric);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private buildPaymentSummary(registration: any) {
+    const price = this.parseAmount(registration?.price);
+    const discountApplied = this.parseAmount(registration?.discountApplied);
+    const walletPaid = this.parseAmount(registration?.walletPaid);
+    const amountDueRaw =
+      typeof registration?.amountDue === 'number'
+        ? registration.amountDue
+        : Math.max(0, price - discountApplied - walletPaid);
+    const amountDue = Math.max(0, this.parseAmount(amountDueRaw));
+    const paidAmount = Math.max(0, price - discountApplied - amountDue);
+    return {
+      price,
+      discountApplied,
+      walletPaid,
+      amountDue,
+      paidAmount,
+      isFullyPaid: amountDue <= 0,
+    };
   }
 
   private mergeLinkedContacts(
@@ -769,9 +815,15 @@ export class RegistrationService {
         ? registration.amountDue
         : Math.max(0, price - walletPaid - discountApplied);
     const amountDue = Math.max(0, currentAmountDue + discountApplied);
+    const settlementStatus = computeSettlementStatus({
+      amountDue,
+      hasApprovedPayment: Boolean((registration as any)?.hasApprovedPayment),
+      cancelledAt: (registration as any)?.cancelledAt,
+      refundStatus: (registration as any)?.refundStatus,
+    });
     await this.registrationModel.updateOne(
       { _id: registration._id },
-      { $set: { discountApplied: 0, discountType: null, amountDue } },
+      { $set: { discountApplied: 0, discountType: null, amountDue, settlementStatus } },
     );
   }
 
@@ -1469,7 +1521,11 @@ export class RegistrationService {
               registration.flagship.detailedPlan,
             );
           }
-          return registration;
+          const plain = typeof (registration as any).toObject === 'function'
+            ? (registration as any).toObject()
+            : registration;
+          plain.paymentSummary = this.buildPaymentSummary(plain);
+          return plain;
         }));
     } catch (error) {
       throw new Error(`Failed to fetch upcoming passport data: ${error.message}`);
@@ -1512,7 +1568,11 @@ export class RegistrationService {
         );
       }
 
-      return registration;
+      const plain = typeof (registration as any).toObject === 'function'
+        ? (registration as any).toObject()
+        : registration;
+      plain.paymentSummary = this.buildPaymentSummary(plain);
+      return plain;
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
@@ -1606,7 +1666,7 @@ export class RegistrationService {
 
     const updated = await this.registrationModel.findOneAndUpdate(
       { _id: registration._id, userId: registrationUserId, status: 'confirmed', cancelledAt: { $exists: false } },
-      { $set: { cancelledAt: new Date(), seatLocked: false } },
+      { $set: { cancelledAt: new Date(), seatLocked: false, settlementStatus: 'cancelled' } },
       { new: true },
     );
 
@@ -1812,5 +1872,197 @@ export class RegistrationService {
     }
 
     return { registrationId, reason: cleanReason };
+  }
+
+  private getPktDayRange(now = new Date()) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(now);
+    const year = parts.find((p) => p.type === 'year')?.value || '1970';
+    const month = parts.find((p) => p.type === 'month')?.value || '01';
+    const day = parts.find((p) => p.type === 'day')?.value || '01';
+    const isoDate = `${year}-${month}-${day}`;
+    const start = new Date(`${isoDate}T00:00:00+05:00`);
+    const end = new Date(`${isoDate}T23:59:59.999+05:00`);
+    return { start, end, isoDate };
+  }
+
+  async updateAttendance(
+    registrationId: string,
+    payload: { status: 'present' | 'absent'; source?: string; deferPayment?: boolean },
+    admin: User,
+  ) {
+    if (!registrationId) {
+      throw new BadRequestException({
+        message: 'Registration ID is required.',
+        code: 'registration_id_required',
+      });
+    }
+    const roles = Array.isArray((admin as any)?.roles) ? (admin as any).roles : [];
+    if (!roles.includes('admin')) {
+      throw new ForbiddenException('Admin authentication required.');
+    }
+
+    const now = new Date();
+    if (payload.status === 'present') {
+      const update: any = {
+        attendanceStatus: 'present',
+        attendanceMarkedBy: admin._id,
+        attendanceMarkedAt: now,
+        attendanceSource: payload.source || 'admin_checkin',
+      };
+      if (payload.deferPayment) {
+        update.paymentDeferredAt = now;
+        update.paymentDeferredBy = admin._id;
+      }
+      const updated = await this.registrationModel.findOneAndUpdate(
+        { _id: registrationId, attendanceStatus: { $ne: 'present' } },
+        { $set: update },
+        { new: true },
+      );
+      if (!updated) {
+        const existing = await this.registrationModel
+          .findById(registrationId)
+          .select('_id attendanceStatus')
+          .lean()
+          .exec();
+        if (!existing) {
+          throw new NotFoundException('Registration not found');
+        }
+        throw new BadRequestException({
+          message: 'Attendance already marked as present.',
+          code: 'attendance_already_present',
+        });
+      }
+      return updated;
+    }
+
+    const updated = await this.registrationModel.findByIdAndUpdate(
+      registrationId,
+      {
+        $set: {
+          attendanceStatus: 'absent',
+          attendanceMarkedBy: admin._id,
+          attendanceMarkedAt: now,
+          attendanceSource: payload.source || 'admin_checkin',
+        },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      throw new NotFoundException('Registration not found');
+    }
+    return updated;
+  }
+
+  async getAdminCheckinList(flagshipId: string) {
+    if (!mongoose.Types.ObjectId.isValid(flagshipId)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
+
+    const registrations = await this.registrationModel
+      .find({
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select(
+        '_id user joiningFromCity amountDue attendanceStatus settlementStatus hasApprovedPayment cancelledAt refundStatus latestPaymentStatus',
+      )
+      .populate({ path: 'user', select: 'fullName email city' })
+      .lean()
+      .exec();
+
+    const registrationIds = registrations.map((reg: any) => reg._id);
+    const pendingPaymentRegs = await this.paymentModel.distinct('registration', {
+      registration: { $in: registrationIds },
+      status: 'pendingApproval',
+    });
+    const pendingSet = new Set((pendingPaymentRegs || []).map((id: any) => String(id)));
+
+    return registrations.map((reg: any) => {
+      const amountDue =
+        typeof reg.amountDue === 'number' ? Math.max(0, reg.amountDue) : 0;
+      const settlementStatus =
+        reg.settlementStatus ||
+        computeSettlementStatus({
+          amountDue,
+          hasApprovedPayment: Boolean(reg.hasApprovedPayment),
+          cancelledAt: reg.cancelledAt,
+          refundStatus: reg.refundStatus,
+        });
+      return {
+        _id: reg._id,
+        userId: reg.user?._id || reg.user,
+        name: reg.user?.fullName || '',
+        email: reg.user?.email || '',
+        city: reg.joiningFromCity || reg.user?.city || '',
+        amountDue,
+        attendanceStatus: reg.attendanceStatus || 'unknown',
+        settlementStatus,
+        pendingPayment: pendingSet.has(String(reg._id)),
+        latestPaymentStatus: reg.latestPaymentStatus || 'none',
+      };
+    });
+  }
+
+  async getAdminCheckinStats(flagshipId: string) {
+    if (!mongoose.Types.ObjectId.isValid(flagshipId)) {
+      throw new BadRequestException('Invalid flagship identifier.');
+    }
+
+    const registrations = await this.registrationModel
+      .find({
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id amountDue attendanceStatus')
+      .lean()
+      .exec();
+
+    const totalDue = registrations.reduce(
+      (sum, reg: any) => sum + (typeof reg.amountDue === 'number' ? reg.amountDue : 0),
+      0,
+    );
+    const totalPresent = registrations.filter(
+      (reg: any) => String(reg.attendanceStatus || 'unknown') === 'present',
+    ).length;
+
+    const registrationIds = registrations.map((reg: any) => reg._id);
+    let totalCollectedToday = 0;
+    if (registrationIds.length > 0) {
+      const { start, end } = this.getPktDayRange(new Date());
+      const collectedAgg = await this.paymentModel.aggregate([
+        { $match: { registration: { $in: registrationIds }, status: 'approved' } },
+        {
+          $addFields: {
+            recordedAtSafe: { $ifNull: ['$recordedAt', '$createdAt'] },
+          },
+        },
+        {
+          $match: {
+            recordedAtSafe: { $gte: start, $lte: end },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ]);
+      totalCollectedToday = Math.max(0, Number(collectedAgg?.[0]?.totalAmount) || 0);
+    }
+
+    return {
+      totalDue: Math.max(0, Number(totalDue) || 0),
+      totalPresent,
+      totalCollectedToday,
+    };
   }
 }

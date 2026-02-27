@@ -1270,10 +1270,10 @@ export class FlagshipService {
       flagship: flagshipObjectId,
       cancelledAt: { $exists: false },
       refundStatus: { $nin: ['pending', 'processing', 'refunded'] },
-      status: { $in: ['payment', 'onboarding', 'new'] },
+      status: { $in: ['payment', 'onboarding', 'new', 'confirmed'] },
       isPaid: { $ne: true },
       amountDue: { $gt: 0 },
-      latestPaymentStatus: { $nin: ['pendingApproval', 'approved'] },
+      latestPaymentStatus: { $ne: 'pendingApproval' },
       $or: [
         { lastPaymentReminderAt: { $exists: false } },
         { lastPaymentReminderAt: { $lte: cooldownCutoff } },
@@ -1605,6 +1605,9 @@ export class FlagshipService {
       bank_transfer: 0,
       wallet_only: 0,
       wallet_plus_bank: 0,
+      cash: 0,
+      split_cash_bank: 0,
+      partial_cash: 0,
     };
 
     let totalPaid = walletPaid;

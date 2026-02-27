@@ -6,12 +6,27 @@ export interface Payment extends Document {
   bankAccountLabel?: string;
   registration: Types.ObjectId;
   paymentType: 'fullPayment' | 'partialPayment';
-  paymentMethod?: 'bank_transfer' | 'wallet_only' | 'wallet_plus_bank';
+  paymentMethod?:
+    | 'bank_transfer'
+    | 'wallet_only'
+    | 'wallet_plus_bank'
+    | 'cash'
+    | 'split_cash_bank'
+    | 'partial_cash';
   amount: number;
   discount?: number;
   walletRequested?: number;
   walletApplied?: number;
   walletDebitId?: string;
+  cashAmount?: number;
+  bankAmount?: number;
+  cashProofKey?: string;
+  bankProofKey?: string;
+  createdByAdmin?: boolean;
+  recordedBy?: Types.ObjectId;
+  recordedAt?: Date;
+  idempotencyKey?: string;
+  adminNote?: string;
   screenshot: string;
   status: 'pendingApproval' | 'approved' | 'rejected';
   rejectionCode?: string;
@@ -51,7 +66,14 @@ export const PaymentSchema = new Schema<Payment>(
     },
     paymentMethod: {
       type: String,
-      enum: ['bank_transfer', 'wallet_only', 'wallet_plus_bank'],
+      enum: [
+        'bank_transfer',
+        'wallet_only',
+        'wallet_plus_bank',
+        'cash',
+        'split_cash_bank',
+        'partial_cash',
+      ],
       default: 'bank_transfer',
     },
     amount: {
@@ -71,6 +93,43 @@ export const PaymentSchema = new Schema<Payment>(
       default: 0,
     },
     walletDebitId: {
+      type: String,
+      default: '',
+    },
+    cashAmount: {
+      type: Number,
+      default: 0,
+    },
+    bankAmount: {
+      type: Number,
+      default: 0,
+    },
+    cashProofKey: {
+      type: String,
+      default: '',
+    },
+    bankProofKey: {
+      type: String,
+      default: '',
+    },
+    createdByAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
+    recordedAt: {
+      type: Date,
+      required: false,
+    },
+    idempotencyKey: {
+      type: String,
+      default: '',
+    },
+    adminNote: {
       type: String,
       default: '',
     },

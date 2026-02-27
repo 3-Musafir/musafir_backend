@@ -1,4 +1,5 @@
 import mongoose, { Model } from 'mongoose';
+import { computeSettlementStatus } from './settlement-status.util';
 
 const parseAmount = (value: unknown): number => {
   if (value === undefined || value === null) return 0;
@@ -228,7 +229,7 @@ export const reallocateGroupDiscountsForFlagship = async (
         cancelledAt: { $exists: false },
         refundStatus: { $ne: 'refunded' },
       })
-      .select('_id price walletPaid')
+      .select('_id price walletPaid hasApprovedPayment cancelledAt refundStatus')
       .lean()
       .exec();
     await Promise.all(
@@ -237,6 +238,12 @@ export const reallocateGroupDiscountsForFlagship = async (
         const walletPaid =
           typeof registration.walletPaid === 'number' ? registration.walletPaid : 0;
         const updatedAmountDue = Math.max(0, price - walletPaid);
+        const settlementStatus = computeSettlementStatus({
+          amountDue: updatedAmountDue,
+          hasApprovedPayment: Boolean(registration?.hasApprovedPayment),
+          cancelledAt: registration?.cancelledAt,
+          refundStatus: registration?.refundStatus,
+        });
         await models.registrationModel.updateOne(
           { _id: registration._id },
           {
@@ -244,6 +251,7 @@ export const reallocateGroupDiscountsForFlagship = async (
               discountApplied: 0,
               amountDue: updatedAmountDue,
               groupDiscountStatus: 'disabled',
+              settlementStatus,
             },
           },
         );
@@ -284,7 +292,7 @@ export const reallocateGroupDiscountsForFlagship = async (
       refundStatus: { $ne: 'refunded' },
     })
     .select(
-      '_id groupId userId groupMembers linkedContacts price walletPaid createdAt amountDue isPaid discountApplied',
+      '_id groupId userId groupMembers linkedContacts price walletPaid createdAt amountDue isPaid discountApplied hasApprovedPayment cancelledAt refundStatus',
     )
     .lean()
     .exec();
@@ -339,10 +347,19 @@ export const reallocateGroupDiscountsForFlagship = async (
         const update: any = {
           groupDiscountStatus: groupStatus,
         };
+        const effectiveAmountDue =
+          typeof registration.amountDue === 'number' ? registration.amountDue : updatedAmountDue;
         if (!isPaid) {
           update.discountApplied = discountToApply;
           update.amountDue = updatedAmountDue;
         }
+        const settlementStatus = computeSettlementStatus({
+          amountDue: isPaid ? effectiveAmountDue : updatedAmountDue,
+          hasApprovedPayment: Boolean(registration?.hasApprovedPayment),
+          cancelledAt: registration?.cancelledAt,
+          refundStatus: registration?.refundStatus,
+        });
+        update.settlementStatus = settlementStatus;
         await models.registrationModel.updateOne({ _id: registration._id }, { $set: update });
       }),
     );

@@ -15,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { RegistrationService } from './registration.service';
 import { CreateRegistrationDto } from './dto/create-registration.dto';
+import { AdminAttendanceDto } from './dto/attendance.dto';
 import { GetUser } from 'src/auth/decorators/user.decorator';
 import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
@@ -206,6 +207,47 @@ export class RegistrationController {
         statusCode: 200,
         message: 'Registration deleted successfully.',
         data,
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Roles('admin')
+    @Post('/admin/:registrationId/attendance')
+    async updateAttendance(
+      @Param('registrationId') registrationId: string,
+      @Body() body: AdminAttendanceDto,
+      @GetUser() admin: User,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Attendance updated.',
+        data: await this.registrationService.updateAttendance(registrationId, body, admin),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Roles('admin')
+    @Get('/admin/checkin/:flagshipId')
+    async getCheckinList(
+      @Param('flagshipId') flagshipId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Check-in list fetched.',
+        data: await this.registrationService.getAdminCheckinList(flagshipId),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Roles('admin')
+    @Get('/admin/checkin-stats/:flagshipId')
+    async getCheckinStats(
+      @Param('flagshipId') flagshipId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Check-in stats fetched.',
+        data: await this.registrationService.getAdminCheckinStats(flagshipId),
       };
     }
 } 

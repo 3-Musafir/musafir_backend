@@ -4,8 +4,10 @@ import mongoose, { Connection, Model, Types } from 'mongoose';
 import { BankAccount, Payment } from './interface/payment.interface';
 import {
   CreateBankAccountDto,
+  AdminManualPaymentDto,
   CreatePaymentDto,
   GetRefundsQueryDto,
+  PaymentQuoteDto,
   RejectPaymentDto,
   RejectRefundDto,
   RequestRefundDto,
@@ -16,6 +18,7 @@ import { Flagship } from 'src/flagship/interfaces/flagship.interface';
 import { Refund } from './schema/refund.schema';
 import { Registration } from 'src/registration/interfaces/registration.interface';
 import { MailService } from 'src/mail/mail.service';
+import { UserService } from 'src/user/user.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { ensureUserVerifiedForPayment } from './payment-validation';
 import { NotificationService } from 'src/notifications/notification.service';
@@ -26,6 +29,7 @@ import { resolveSeatBucket, getSeatCounterUpdate } from 'src/flagship/seat-utils
 import { PaymentRejectionReason } from './interface/payment-rejection-reason.interface';
 import { RefundRejectionReason } from './interface/refund-rejection-reason.interface';
 import { MUSAFIR_DISCOUNT_MAX, calcMusafirDiscount } from 'src/discounts/musafir.constants';
+import { computeSettlementStatus } from 'src/registration/settlement-status.util';
 
 @Injectable()
 export class PaymentService {
@@ -48,6 +52,7 @@ export class PaymentService {
     private readonly refundModel: Model<Refund>,
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
+    private readonly userService: UserService,
     private readonly notificationService: NotificationService,
     private readonly walletService: WalletService,
     private readonly refundSettlementService: RefundSettlementService,
@@ -398,6 +403,7 @@ export class PaymentService {
       refundStatus: 'refunded',
       amountDue: 0,
       isPaid: false,
+      settlementStatus: 'refunded',
       seatLocked: false,
     });
     // Group discounts are handled at payment time; no reallocation needed after refund.
@@ -434,9 +440,15 @@ export class PaymentService {
         ? registration.amountDue
         : Math.max(0, price - walletPaid - discountApplied);
     const amountDue = Math.max(0, currentAmountDue + discountApplied);
+    const settlementStatus = computeSettlementStatus({
+      amountDue,
+      hasApprovedPayment: Boolean((registration as any)?.hasApprovedPayment),
+      cancelledAt: (registration as any)?.cancelledAt,
+      refundStatus: (registration as any)?.refundStatus,
+    });
     await this.registrationModel.updateOne(
       { _id: registration._id },
-      { $set: { discountApplied: 0, discountType: null, amountDue } },
+      { $set: { discountApplied: 0, discountType: null, amountDue, settlementStatus } },
       session ? { session } : undefined,
     );
   }
@@ -605,6 +617,8 @@ export class PaymentService {
     const items = await Promise.all(
       pagePayments.map(async (payment: any) => {
         const screenshotUrl = await this.resolveScreenshotUrl(payment?.screenshot);
+        const cashProofUrl = await this.resolveScreenshotUrl((payment as any)?.cashProofKey);
+        const bankProofUrl = await this.resolveScreenshotUrl((payment as any)?.bankProofKey);
         const item: any = {
           _id: payment._id,
           createdAt: payment.createdAt,
@@ -613,6 +627,10 @@ export class PaymentService {
           paymentMethod: payment.paymentMethod,
           status: payment.status,
           screenshotUrl,
+          cashProofUrl,
+          bankProofUrl,
+          cashAmount: (payment as any)?.cashAmount,
+          bankAmount: (payment as any)?.bankAmount,
           rejectionCode: payment.rejectionCode,
           rejectionLabel: payment.rejectionLabel,
           rejectionPublicNote: payment.rejectionPublicNote,
@@ -1053,13 +1071,23 @@ export class PaymentService {
       .populate('bankAccount')
       .exec();
 
-    if (payment && payment.screenshot) {
-      const isUrl = /^https?:\/\//i.test(payment.screenshot);
-      if (!isUrl) {
-        const screenshotUrl = await this.storageService.getSignedUrl(
-          payment.screenshot,
-        );
-        payment.screenshot = screenshotUrl;
+    if (payment) {
+      if (payment.screenshot) {
+        const isUrl = /^https?:\/\//i.test(payment.screenshot);
+        if (!isUrl) {
+          const screenshotUrl = await this.storageService.getSignedUrl(
+            payment.screenshot,
+          );
+          payment.screenshot = screenshotUrl;
+        }
+      }
+      const cashKey = (payment as any)?.cashProofKey;
+      if (cashKey) {
+        (payment as any).cashProofKey = await this.resolveScreenshotUrl(cashKey);
+      }
+      const bankKey = (payment as any)?.bankProofKey;
+      if (bankKey) {
+        (payment as any).bankProofKey = await this.resolveScreenshotUrl(bankKey);
       }
     }
 
@@ -1535,6 +1563,206 @@ export class PaymentService {
     return this.buildEligibleDiscounts(registration, user, flagship);
   }
 
+  async getPaymentQuote(payload: PaymentQuoteDto, requester?: User) {
+    if (!payload?.registration) {
+      throw new BadRequestException({
+        message: 'Registration ID is required.',
+        code: 'registration_required',
+      });
+    }
+
+    const registration = await this.registrationModel
+      .findById(payload.registration)
+      .populate('flagship')
+      .populate('user')
+      .lean()
+      .exec();
+
+    if (!registration) {
+      throw new BadRequestException({
+        message: 'Registration not found.',
+        code: 'registration_not_found',
+      });
+    }
+    const requesterId = requester?._id?.toString();
+    const registrationUserId = (registration as any)?.userId || (registration as any)?.user;
+    if (!requesterId || !registrationUserId || String(registrationUserId) !== String(requesterId)) {
+      throw new ForbiddenException('You can only view a payment quote for your own registration.');
+    }
+
+    const errors: Array<{ code: string; message: string }> = [];
+    const registrationStatus = String((registration as any)?.status || '');
+    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+      errors.push({
+        message: registrationStatus === 'waitlisted'
+          ? 'You are currently waitlisted. You will be notified when a seat opens.'
+          : 'Registration is not eligible for payment yet.',
+        code: 'registration_not_payable',
+      });
+    }
+    if ((registration as any)?.cancelledAt) {
+      errors.push({
+        message: 'Cancelled registrations cannot accept payments.',
+        code: 'registration_cancelled',
+      });
+    }
+    const refundStatus = String((registration as any)?.refundStatus || 'none');
+    if (['pending', 'processing', 'refunded'].includes(refundStatus)) {
+      errors.push({
+        message: 'Refunded or refunding registrations cannot accept payments.',
+        code: 'registration_refund_locked',
+      });
+    }
+
+    const pendingPayment = await this.paymentModel
+      .findOne({ registration: payload.registration, status: 'pendingApproval' })
+      .select('_id')
+      .lean()
+      .exec();
+    const pendingApproval = Boolean(pendingPayment?._id);
+    if (pendingApproval) {
+      errors.push({
+        message: 'A payment for this registration is already pending approval.',
+        code: 'payment_pending_approval',
+      });
+    }
+
+    const registrationPrice =
+      typeof (registration as any)?.price === 'number'
+        ? (registration as any).price
+        : 0;
+    const currentWalletPaid =
+      typeof (registration as any)?.walletPaid === 'number'
+        ? (registration as any).walletPaid
+        : 0;
+    let currentDiscountApplied =
+      typeof (registration as any)?.discountApplied === 'number'
+        ? (registration as any).discountApplied
+        : 0;
+    const existingDiscountType = (registration as any)?.discountType;
+    const requestedDiscountType = payload?.discountType as
+      | 'soloFemale'
+      | 'group'
+      | 'musafir'
+      | undefined;
+
+    let amountDue =
+      typeof (registration as any)?.amountDue === 'number'
+        ? (registration as any).amountDue
+        : Math.max(0, registrationPrice - currentDiscountApplied - currentWalletPaid);
+    let discountApplied = currentDiscountApplied;
+
+    if (requestedDiscountType) {
+      if (existingDiscountType && existingDiscountType !== requestedDiscountType) {
+        errors.push({
+          message: 'A discount has already been selected for this registration.',
+          code: 'discount_already_selected',
+        });
+      } else if (!existingDiscountType || currentDiscountApplied <= 0) {
+        const user = (registration as any)?.user || null;
+        const flagship = (registration as any)?.flagship || null;
+        const eligible = await this.buildEligibleDiscounts(registration, user, flagship);
+        const selected = (eligible as any)?.[requestedDiscountType];
+        const discountAmount = Math.max(0, Math.floor(Number(selected?.amount) || 0));
+        if (!selected?.eligible || discountAmount <= 0) {
+          errors.push({
+            message: 'Selected discount is not available.',
+            code: 'discount_not_eligible',
+          });
+        } else {
+          discountApplied = discountAmount;
+          amountDue = Math.max(0, amountDue - discountAmount);
+        }
+      }
+    }
+
+    if (amountDue <= 0) {
+      errors.push({
+        message: 'No payment is due for this registration.',
+        code: 'no_payment_due',
+      });
+    }
+
+    const requestedWalletAmount = Math.max(
+      0,
+      Math.floor(Number(payload?.walletAmount) || 0),
+    );
+    if (requestedWalletAmount > amountDue) {
+      errors.push({
+        message: "Wallet amount can't exceed remaining due.",
+        code: 'wallet_amount_exceeds_due',
+      });
+    }
+
+    let maxWalletUsable = amountDue;
+    if (requesterId) {
+      try {
+        const balance = await this.walletService.getBalance(requesterId);
+        maxWalletUsable = Math.max(0, Math.min(amountDue, Number(balance?.balance) || 0));
+        if (requestedWalletAmount > maxWalletUsable) {
+          errors.push({
+            message: 'Insufficient wallet balance.',
+            code: 'wallet_insufficient_balance',
+          });
+        }
+      } catch (error) {
+        // Ignore wallet lookup errors for quoting
+      }
+    }
+
+    const walletApplied = Math.min(requestedWalletAmount, maxWalletUsable, amountDue);
+    const paymentMode =
+      payload?.paymentMode ||
+      (requestedWalletAmount > 0 ? 'wallet_only' : 'bank_transfer');
+
+    let cashDue = 0;
+    let payableNow = 0;
+    let requiresScreenshot = false;
+
+    if (paymentMode === 'wallet_only') {
+      cashDue = 0;
+      payableNow = walletApplied;
+      requiresScreenshot = false;
+      if (walletApplied <= 0 && amountDue > 0) {
+        errors.push({
+          message: 'Please specify wallet credits to apply.',
+          code: 'payment_amount_required',
+        });
+      }
+    } else if (paymentMode === 'bank_transfer') {
+      if (requestedWalletAmount > 0) {
+        errors.push({
+          message: 'Wallet credits are not available for bank transfer-only payments.',
+          code: 'wallet_not_allowed',
+        });
+      }
+      cashDue = amountDue;
+      payableNow = amountDue;
+      requiresScreenshot = cashDue > 0;
+    } else {
+      cashDue = Math.max(0, amountDue - walletApplied);
+      payableNow = walletApplied + cashDue;
+      requiresScreenshot = cashDue > 0;
+    }
+
+    return {
+      statusCode: 200,
+      message: 'Payment quote resolved.',
+      data: {
+        amountDue,
+        discountApplied,
+        maxWalletUsable,
+        walletApplied,
+        cashDue,
+        payableNow,
+        requiresScreenshot,
+        paymentMode,
+        pendingApproval,
+        errors,
+      },
+    };
+  }
+
   async createPayment(
     createPaymentDto: CreatePaymentDto,
     screenshot: Express.Multer.File | undefined,
@@ -1811,11 +2039,18 @@ export class PaymentService {
 
       currentDiscountApplied = discountAmount;
       currentAmountDue = Math.max(0, baseAmountDue - discountAmount);
+      const settlementStatus = computeSettlementStatus({
+        amountDue: currentAmountDue,
+        hasApprovedPayment: Boolean((registration as any)?.hasApprovedPayment),
+        cancelledAt: (registration as any)?.cancelledAt,
+        refundStatus: (registration as any)?.refundStatus,
+      });
       await this.registrationModel.findByIdAndUpdate(registration._id, {
         $set: {
           discountType: requestedDiscountType,
           discountApplied: discountAmount,
           amountDue: currentAmountDue,
+          settlementStatus,
         },
       });
     }
@@ -1840,6 +2075,12 @@ export class PaymentService {
         : legacyDiscount;
     const discountDelta = Math.max(0, requestedDiscount - currentDiscountApplied);
     const dueAfterDiscount = Math.max(0, currentAmountDue - discountDelta);
+    if (requestedWalletAmount > dueAfterDiscount) {
+      throw new BadRequestException({
+        message: "Wallet amount can't exceed remaining due.",
+        code: 'wallet_amount_exceeds_due',
+      });
+    }
     const walletToApply = Math.min(requestedWalletAmount, dueAfterDiscount);
 
     const manualAmount = Math.max(0, Math.floor(Number(createPaymentDto.amount) || 0));
@@ -1899,10 +2140,10 @@ export class PaymentService {
       dueAfterDiscount - walletToApply,
     );
 
-    if (manualAmount > remainingDueForManualPayment) {
+    if (manualAmount > 0 && manualAmount !== remainingDueForManualPayment) {
       throw new BadRequestException({
-        message: 'Payment amount exceeds remaining due.',
-        code: 'payment_amount_exceeds_due',
+        message: 'Bank transfer amount must equal remaining due.',
+        code: 'payment_amount_must_match_due',
       });
     }
 
@@ -2034,6 +2275,328 @@ export class PaymentService {
     }
   }
 
+  async createManualAdminPayment(
+    payload: AdminManualPaymentDto,
+    files: { cashProof?: Express.Multer.File[]; bankProof?: Express.Multer.File[] },
+    admin?: User,
+  ): Promise<any> {
+    if (!this.isAdminUser(admin)) {
+      throw new ForbiddenException('Admin authentication required.');
+    }
+
+    const registration = await this.registrationModel.findById(payload.registration);
+    if (!registration) {
+      throw new BadRequestException({
+        message: 'Registration not found.',
+        code: 'registration_not_found',
+      });
+    }
+
+    const registrationStatus = String((registration as any)?.status || '');
+    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+      throw new BadRequestException({
+        message: 'Registration is not eligible for payment.',
+        code: 'registration_not_payable',
+      });
+    }
+    if ((registration as any)?.cancelledAt) {
+      throw new BadRequestException({
+        message: 'Cancelled registrations cannot accept payments.',
+        code: 'registration_cancelled',
+      });
+    }
+    const refundStatus = String((registration as any)?.refundStatus || 'none');
+    if (['pending', 'processing', 'refunded'].includes(refundStatus)) {
+      throw new BadRequestException({
+        message: 'Refunded or refunding registrations cannot accept payments.',
+        code: 'registration_refund_locked',
+      });
+    }
+
+    const pendingPayment = await this.paymentModel
+      .findOne({ registration: payload.registration, status: 'pendingApproval' })
+      .select('_id')
+      .lean()
+      .exec();
+    if (pendingPayment?._id) {
+      throw new BadRequestException({
+        message: 'A payment for this registration is already pending approval.',
+        code: 'payment_pending_approval',
+      });
+    }
+
+    if (payload?.idempotencyKey) {
+      const existing = await this.paymentModel
+        .findOne({
+          registration: payload.registration,
+          idempotencyKey: payload.idempotencyKey,
+        })
+        .exec();
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const adminId = admin?._id?.toString();
+    const registrationUserId = (registration as any)?.userId || (registration as any)?.user;
+    let autoVerified = false;
+    let verificationSnapshot: {
+      status?: VerificationStatus;
+      method?: string;
+      verificationDate?: Date;
+      flagshipId?: string;
+    } | null = null;
+
+    const registrationPrice =
+      typeof (registration as any)?.price === 'number'
+        ? (registration as any).price
+        : 0;
+    const currentWalletPaid =
+      typeof (registration as any)?.walletPaid === 'number'
+        ? (registration as any).walletPaid
+        : 0;
+    const currentDiscountApplied =
+      typeof (registration as any)?.discountApplied === 'number'
+        ? (registration as any).discountApplied
+        : 0;
+    const currentAmountDue =
+      typeof (registration as any)?.amountDue === 'number'
+        ? (registration as any).amountDue
+        : Math.max(0, registrationPrice - currentDiscountApplied - currentWalletPaid);
+
+    if (currentAmountDue <= 0) {
+      throw new BadRequestException({
+        message: 'No payment is due for this registration.',
+        code: 'no_payment_due',
+      });
+    }
+
+    const cashAmount = Math.max(0, Math.floor(Number(payload?.cashAmount) || 0));
+    const bankAmount = Math.max(0, Math.floor(Number(payload?.bankAmount) || 0));
+    const totalAmount = Math.max(0, cashAmount + bankAmount);
+
+    const bankAccountId =
+      typeof payload.bankAccount === 'string' && payload.bankAccount
+        ? payload.bankAccount
+        : null;
+    const bankAccountLabel =
+      typeof payload.bankAccountLabel === 'string'
+        ? payload.bankAccountLabel.trim()
+        : '';
+
+    if (payload.paymentMethod === 'cash') {
+      if (cashAmount !== currentAmountDue || bankAmount !== 0) {
+        throw new BadRequestException({
+          message: 'Cash amount must match remaining due.',
+          code: 'manual_cash_amount_mismatch',
+        });
+      }
+    } else if (payload.paymentMethod === 'bank_transfer') {
+      if (bankAmount !== currentAmountDue || cashAmount !== 0) {
+        throw new BadRequestException({
+          message: 'Bank transfer amount must match remaining due.',
+          code: 'manual_bank_amount_mismatch',
+        });
+      }
+      if (!bankAccountId && !bankAccountLabel) {
+        throw new BadRequestException({
+          message: 'Bank account selection is required for bank transfers.',
+          code: 'bank_account_required',
+        });
+      }
+    } else if (payload.paymentMethod === 'split_cash_bank') {
+      if (cashAmount <= 0 || bankAmount <= 0 || totalAmount !== currentAmountDue) {
+        throw new BadRequestException({
+          message: 'Split amounts must equal remaining due.',
+          code: 'manual_split_amount_mismatch',
+        });
+      }
+      if (!bankAccountId && !bankAccountLabel) {
+        throw new BadRequestException({
+          message: 'Bank account selection is required for split payments.',
+          code: 'bank_account_required',
+        });
+      }
+    } else if (payload.paymentMethod === 'partial_cash') {
+      if (cashAmount <= 0 || cashAmount >= currentAmountDue || bankAmount !== 0) {
+        throw new BadRequestException({
+          message: 'Partial cash must be less than remaining due.',
+          code: 'manual_partial_amount_invalid',
+        });
+      }
+    } else {
+      throw new BadRequestException({
+        message: 'Invalid manual payment method.',
+        code: 'manual_payment_method_invalid',
+      });
+    }
+
+    if (totalAmount <= 0) {
+      throw new BadRequestException({
+        message: 'Payment amount is required.',
+        code: 'payment_amount_required',
+      });
+    }
+
+    const cashProofFile = files?.cashProof?.[0];
+    const bankProofFile = files?.bankProof?.[0];
+    if (cashAmount > 0 && !cashProofFile) {
+      throw new BadRequestException({
+        message: 'Cash proof is required.',
+        code: 'cash_proof_required',
+      });
+    }
+    if (bankAmount > 0 && !bankProofFile) {
+      throw new BadRequestException({
+        message: 'Bank transfer proof is required.',
+        code: 'bank_proof_required',
+      });
+    }
+
+    let savedPayment: any = null;
+    let cashProofKey = '';
+    let bankProofKey = '';
+    try {
+      if (registrationUserId) {
+        const registrationUser = await this.user.findById(registrationUserId);
+        const currentStatus = (registrationUser as any)?.verification?.status;
+        if (registrationUser && currentStatus !== VerificationStatus.VERIFIED) {
+          verificationSnapshot = {
+            status: (registrationUser as any)?.verification?.status,
+            method: (registrationUser as any)?.verification?.method,
+            verificationDate: (registrationUser as any)?.verification?.VerificationDate,
+            flagshipId: (registrationUser as any)?.verification?.flagshipId,
+          };
+          const flagshipIdValue =
+            (registration as any)?.flagship || (registration as any)?.flagshipId;
+          const flagshipId =
+            flagshipIdValue ? String(flagshipIdValue) : undefined;
+          await this.userService.setUserVerifiedWithoutCredits(
+            registrationUserId.toString(),
+            {
+              method: 'admin_manual_payment',
+              source: 'admin_manual_payment',
+              adminId,
+              flagshipId,
+              notify: false,
+            },
+          );
+          autoVerified = true;
+        }
+      }
+
+      const payment = new this.paymentModel({
+        registration: registration._id,
+        paymentType: totalAmount < currentAmountDue ? 'partialPayment' : 'fullPayment',
+        paymentMethod: payload.paymentMethod,
+        amount: totalAmount,
+        bankAccount: bankAccountId || undefined,
+        bankAccountLabel: bankAccountLabel || undefined,
+        cashAmount,
+        bankAmount,
+        createdByAdmin: true,
+        recordedBy: admin?._id,
+        recordedAt: new Date(),
+        idempotencyKey: payload.idempotencyKey || undefined,
+        adminNote: payload.adminNote || undefined,
+        status: 'pendingApproval',
+        walletRequested: 0,
+        walletApplied: 0,
+        discount: 0,
+      });
+
+      savedPayment = await payment.save();
+
+      if (cashProofFile) {
+        cashProofKey = await this.storageService.uploadFile(
+          `${savedPayment._id.toString()}-cash`,
+          cashProofFile.buffer,
+          cashProofFile.mimetype,
+        );
+      }
+      if (bankProofFile) {
+        bankProofKey = await this.storageService.uploadFile(
+          `${savedPayment._id.toString()}-bank`,
+          bankProofFile.buffer,
+          bankProofFile.mimetype,
+        );
+      }
+
+      const screenshotKey = bankProofKey || cashProofKey || '';
+      if (cashProofKey || bankProofKey || screenshotKey) {
+        await this.paymentModel.findByIdAndUpdate(savedPayment._id, {
+          $set: {
+            cashProofKey: cashProofKey || undefined,
+            bankProofKey: bankProofKey || undefined,
+            screenshot: screenshotKey || undefined,
+          },
+        });
+        (savedPayment as any).cashProofKey = cashProofKey || undefined;
+        (savedPayment as any).bankProofKey = bankProofKey || undefined;
+        if (screenshotKey) {
+          (savedPayment as any).screenshot = screenshotKey;
+        }
+      }
+
+      const approved = await this.approvePayment(savedPayment._id.toString(), admin);
+      if (autoVerified && registrationUserId) {
+        await this.userService.notifyVerificationApproved(
+          registrationUserId.toString(),
+          'admin_manual_payment',
+        );
+      }
+
+      if (admin?._id) {
+        await this.registrationModel.updateOne(
+          { _id: registration._id, attendanceStatus: { $ne: 'present' } },
+          {
+            $set: {
+              attendanceStatus: 'present',
+              attendanceMarkedBy: admin._id,
+              attendanceMarkedAt: new Date(),
+              attendanceSource: 'manual_payment',
+            },
+          },
+        );
+      }
+
+      return approved;
+    } catch (err) {
+      if (savedPayment?._id) {
+        const latest = await this.paymentModel
+          .findById(savedPayment._id)
+          .select('status')
+          .lean()
+          .exec();
+        const currentStatus = String((latest as any)?.status || 'pendingApproval');
+        if (!latest || currentStatus === 'pendingApproval') {
+          await this.paymentModel.deleteOne({ _id: savedPayment._id });
+          const deleteTasks: Promise<void>[] = [];
+          if (cashProofKey) {
+            deleteTasks.push(this.storageService.deleteFile(cashProofKey).catch(() => undefined));
+          }
+          if (bankProofKey) {
+            deleteTasks.push(this.storageService.deleteFile(bankProofKey).catch(() => undefined));
+          }
+          if (deleteTasks.length > 0) {
+            await Promise.all(deleteTasks);
+          }
+        }
+      }
+      if (autoVerified && verificationSnapshot && registrationUserId) {
+        await this.userService.rollbackUserVerification(
+          registrationUserId.toString(),
+          verificationSnapshot,
+          {
+            adminId,
+            source: 'admin_manual_payment_rollback',
+          },
+        );
+      }
+      throw err;
+    }
+  }
+
   async approvePayment(id: string, admin?: User): Promise<Payment> {
     const payment = await this.paymentModel.findById(id);
     if (!payment) {
@@ -2155,6 +2718,18 @@ export class PaymentService {
           payment.walletApplied = requestedWallet;
         }
         await payment.save();
+        if (registration?._id) {
+          const settlementStatus = computeSettlementStatus({
+            amountDue: (registration as any)?.amountDue,
+            hasApprovedPayment: true,
+            cancelledAt: (registration as any)?.cancelledAt,
+            refundStatus: (registration as any)?.refundStatus,
+          });
+          await this.registrationModel.updateOne(
+            { _id: registration._id },
+            { $set: { hasApprovedPayment: true, settlementStatus } },
+          );
+        }
         return payment;
       }
     }
@@ -2381,8 +2956,16 @@ export class PaymentService {
               }
             }
 
+            const settlementStatus = computeSettlementStatus({
+              amountDue: newAmountDue,
+              hasApprovedPayment: true,
+              cancelledAt: (registration as any)?.cancelledAt,
+              refundStatus: (registration as any)?.refundStatus,
+            });
             const registrationUpdate: any = {
-              isPaid: true,
+              isPaid: newAmountDue === 0,
+              hasApprovedPayment: true,
+              settlementStatus,
               amountDue: newAmountDue,
               discountApplied: updatedDiscountApplied,
               status: 'confirmed',
@@ -2591,7 +3174,7 @@ export class PaymentService {
       try {
         const updatedRegistration: any = await this.registrationModel
           .findById(payment.registration)
-          .select('amountDue')
+          .select('amountDue hasApprovedPayment cancelledAt refundStatus')
           .lean()
           .exec();
         if (typeof updatedRegistration?.amountDue === 'number') {
@@ -2600,6 +3183,18 @@ export class PaymentService {
             { $set: { remainingDueAtDecision: updatedRegistration.amountDue } },
           );
           (payment as any).remainingDueAtDecision = updatedRegistration.amountDue;
+        }
+        if (updatedRegistration) {
+          const settlementStatus = computeSettlementStatus({
+            amountDue: updatedRegistration.amountDue,
+            hasApprovedPayment: Boolean(updatedRegistration.hasApprovedPayment),
+            cancelledAt: updatedRegistration.cancelledAt,
+            refundStatus: updatedRegistration.refundStatus,
+          });
+          await this.registrationModel.updateOne(
+            { _id: payment.registration },
+            { $set: { settlementStatus } },
+          );
         }
       } catch (error) {
         console.log('Failed to snapshot remaining due after rejection:', error);

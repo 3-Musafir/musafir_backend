@@ -109,6 +109,112 @@ export class CreatePaymentDto {
   discountType?: 'soloFemale' | 'group' | 'musafir';
 }
 
+export class PaymentQuoteDto {
+  @ApiProperty({
+    example: '1234567890',
+    description: 'Registration ID',
+  })
+  @IsNotEmpty()
+  @IsString()
+  registration: string;
+
+  @ApiPropertyOptional({
+    example: 0,
+    description: 'Wallet credits to apply (PKR)',
+    required: false,
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  walletAmount?: number;
+
+  @ApiPropertyOptional({
+    example: 'soloFemale',
+    description: 'Discount type to apply',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  discountType?: 'soloFemale' | 'group' | 'musafir';
+
+  @ApiPropertyOptional({
+    example: 'wallet_plus_bank',
+    description: 'Payment mode',
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(['wallet_only', 'bank_transfer', 'wallet_plus_bank'])
+  paymentMode?: 'wallet_only' | 'bank_transfer' | 'wallet_plus_bank';
+}
+
+export class AdminManualPaymentDto {
+  @ApiProperty({
+    example: '1234567890',
+    description: 'Registration ID',
+  })
+  @IsNotEmpty()
+  @IsString()
+  registration: string;
+
+  @ApiProperty({
+    example: 'cash',
+    description: 'Manual payment method',
+  })
+  @IsNotEmpty()
+  @IsIn(['cash', 'bank_transfer', 'split_cash_bank', 'partial_cash'])
+  paymentMethod: 'cash' | 'bank_transfer' | 'split_cash_bank' | 'partial_cash';
+
+  @ApiPropertyOptional({
+    example: 5000,
+    description: 'Cash amount collected (PKR)',
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  cashAmount?: number;
+
+  @ApiPropertyOptional({
+    example: 5000,
+    description: 'Bank amount collected (PKR)',
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  bankAmount?: number;
+
+  @ApiPropertyOptional({
+    example: '1234567890',
+    description: 'Bank Account ID',
+  })
+  @IsOptional()
+  @IsString()
+  bankAccount?: string;
+
+  @ApiPropertyOptional({
+    example: 'Faysal Bank (Ahmed Bin Abrar)',
+    description: 'Display label for the selected bank account',
+  })
+  @IsOptional()
+  @IsString()
+  bankAccountLabel?: string;
+
+  @ApiPropertyOptional({
+    example: 'manual-entry-1',
+    description: 'Idempotency key for manual entries',
+  })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+
+  @ApiPropertyOptional({
+    example: 'Collected at check-in desk',
+    description: 'Admin note for manual payment',
+  })
+  @IsOptional()
+  @IsString()
+  adminNote?: string;
+}
+
 export class RequestRefundDto {
   @ApiProperty({
     example: '1234567890',

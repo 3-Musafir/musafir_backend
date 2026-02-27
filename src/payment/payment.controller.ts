@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
@@ -17,13 +18,15 @@ import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 import {
   CreateBankAccountDto,
+  AdminManualPaymentDto,
   CreatePaymentDto,
   GetRefundsQueryDto,
+  PaymentQuoteDto,
   RejectPaymentDto,
   RejectRefundDto,
   RequestRefundDto,
 } from './dto/payment.dto';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/auth.guard';
 import { GetUser } from 'src/auth/decorators/user.decorator';
@@ -142,6 +145,15 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard)
   requestRefund(@GetUser() user: User, @Body() requestRefundDto: RequestRefundDto) {
     return this.paymentService.requestRefund(requestRefundDto, user);
+  }
+
+  @Post('quote')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get payment quote (precalculated amounts)' })
+  @ApiOkResponse({})
+  getPaymentQuote(@GetUser() user: User, @Body() payload: PaymentQuoteDto) {
+    return this.paymentService.getPaymentQuote(payload, user);
   }
 
   @Get('refund-quote/:registrationId')
@@ -286,6 +298,27 @@ export class PaymentController {
   @ApiOkResponse({})
   approvePayment(@Param('id') id: string, @GetUser() admin: User) {
     return this.paymentService.approvePayment(id, admin);
+  }
+
+  @Post('admin/manual-payment')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Admin: create manual payment (cash/bank/split)' })
+  @ApiOkResponse({})
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'cashProof', maxCount: 1 },
+      { name: 'bankProof', maxCount: 1 },
+    ]),
+  )
+  createManualPayment(
+    @Body() payload: AdminManualPaymentDto,
+    @UploadedFiles()
+    files: { cashProof?: Express.Multer.File[]; bankProof?: Express.Multer.File[] },
+    @GetUser() admin: User,
+  ) {
+    return this.paymentService.createManualAdminPayment(payload, files, admin);
   }
 
   @Patch('reject-payment/:id')

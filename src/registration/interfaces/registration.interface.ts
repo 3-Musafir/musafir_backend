@@ -29,6 +29,14 @@ export class Registration {
   readonly latestPaymentType?: string;
   readonly lastPaymentReminderAt?: Date;
   readonly isPaid?: boolean;
+  readonly settlementStatus?: 'unpaid' | 'partial' | 'paid' | 'cancelled' | 'refunded';
+  readonly hasApprovedPayment?: boolean;
+  readonly attendanceStatus?: 'unknown' | 'present' | 'absent';
+  readonly attendanceMarkedBy?: string | User;
+  readonly attendanceMarkedAt?: Date;
+  readonly attendanceSource?: string;
+  readonly paymentDeferredAt?: Date;
+  readonly paymentDeferredBy?: string | User;
   readonly joiningFromCity?: string;
   readonly tier?: string;
   readonly bedPreference?: string;
