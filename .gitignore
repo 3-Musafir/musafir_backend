@@ -142,3 +142,6 @@ test-output/
 dist/
 
 uploads
+
+# Seed data (CSV files with user PII)
+seed-data/*.csv

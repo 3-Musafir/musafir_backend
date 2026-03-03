@@ -17,7 +17,7 @@ let Registration: any;
 /**
  * Expected files (CSV headers must match):
  * - seed-data/users.csv:
- *   userKey,fullName,email,phone,city,roles,verification
+ *   userKey,fullName,gender,email,roles,verification,phone,city
  *
  * - seed-data/flagships.csv:
  *   flagshipKey,canonicalName
@@ -29,6 +29,7 @@ let Registration: any;
 type UserRow = {
   userKey: string;
   fullName: string;
+  gender?: string;
   email?: string;
   phone: string;
   city?: string;
@@ -208,6 +209,7 @@ export async function seedFromCSV() {
         $set: {
           legacyUserKey,
           fullName: (r.fullName || '').trim(),
+          gender: r.gender ? String(r.gender).trim().toLowerCase() : undefined,
           email,
           phone,
           city: r.city ? String(r.city).trim() : undefined,
