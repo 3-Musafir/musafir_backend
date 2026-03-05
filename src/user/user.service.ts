@@ -1422,6 +1422,11 @@ export class UserService {
           user.verification.RequestCall = false;
         }
 
+        // Carry over gender if the real user doesn't have one
+        if (!user.gender && legacyUser.gender) {
+          user.gender = legacyUser.gender;
+        }
+
         // Use legacy referralID if the current user doesn't have a proper one
         if (
           legacyUser.referralID &&
