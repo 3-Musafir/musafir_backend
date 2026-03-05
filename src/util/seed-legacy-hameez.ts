@@ -55,6 +55,7 @@ async function seed() {
       $set: {
         legacyUserKey,
         fullName: 'Hameez Rizwan',
+        gender: 'male',
         phone: '+923444225504',
         roles: ['musafir'],
         verification: {

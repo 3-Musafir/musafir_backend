@@ -20,7 +20,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:csv": "ts-node -r tsconfig-paths/register src/util/csv-seeder.ts",
-    "wallet:reconcile": "ts-node -r tsconfig-paths/register src/util/wallet-reconcile.ts"
+    "wallet:reconcile": "ts-node -r tsconfig-paths/register src/util/wallet-reconcile.ts",
+    "reconcile:legacy": "ts-node -r tsconfig-paths/register src/util/reconcile-legacy-users.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.787.0",
