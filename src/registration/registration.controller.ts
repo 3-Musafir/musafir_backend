@@ -20,6 +20,7 @@ import { GetUser } from 'src/auth/decorators/user.decorator';
 import { User } from 'src/user/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
 import { AdminDeleteRegistrationDto } from './dto/admin-delete-registration.dto';
 
 @ApiTags('Registration')
@@ -44,6 +45,22 @@ export class RegistrationController {
             createRegistrationDto,
             userId,
           );
+    }
+
+    @Public()
+    @Post('public')
+    @HttpCode(HttpStatus.CREATED)
+    async registerPublic(
+        @Body() createRegistrationDto: CreateRegistrationDto,
+    ) {
+        const userId = createRegistrationDto.userId;
+        if (!userId) {
+            throw new UnauthorizedException('userId is required for public registration.');
+        }
+        return this.registrationService.createRegistration(
+            createRegistrationDto,
+            userId,
+        );
     }
 
     @UseGuards(JwtAuthGuard)
