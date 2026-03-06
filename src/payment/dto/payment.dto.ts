@@ -143,8 +143,8 @@ export class PaymentQuoteDto {
     required: false,
   })
   @IsOptional()
-  @IsIn(['wallet_only', 'bank_transfer', 'wallet_plus_bank'])
-  paymentMode?: 'wallet_only' | 'bank_transfer' | 'wallet_plus_bank';
+  @IsIn(['wallet_only', 'bank_transfer', 'wallet_plus_bank', 'partial'])
+  paymentMode?: 'wallet_only' | 'bank_transfer' | 'wallet_plus_bank' | 'partial';
 }
 
 export class AdminManualPaymentDto {

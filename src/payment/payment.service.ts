@@ -33,6 +33,10 @@ import { computeSettlementStatus } from 'src/registration/settlement-status.util
 
 @Injectable()
 export class PaymentService {
+  private computePartialDue(amountDue: number): number {
+    return Math.max(0, Math.floor(amountDue * 0.3));
+  }
+
   constructor(
     @InjectModel('Payment')
     private readonly paymentModel: Model<Payment>,
@@ -1687,18 +1691,26 @@ export class PaymentService {
       0,
       Math.floor(Number(payload?.walletAmount) || 0),
     );
-    if (requestedWalletAmount > amountDue) {
+
+    const paymentMode =
+      payload?.paymentMode ||
+      (requestedWalletAmount > 0 ? 'wallet_only' : 'bank_transfer');
+    const isPartialMode = paymentMode === 'partial';
+    const partialDue = isPartialMode ? this.computePartialDue(amountDue) : null;
+    const effectiveDue = isPartialMode ? partialDue || 0 : amountDue;
+
+    if (requestedWalletAmount > effectiveDue) {
       errors.push({
         message: "Wallet amount can't exceed remaining due.",
         code: 'wallet_amount_exceeds_due',
       });
     }
 
-    let maxWalletUsable = amountDue;
+    let maxWalletUsable = effectiveDue;
     if (requesterId) {
       try {
         const balance = await this.walletService.getBalance(requesterId);
-        maxWalletUsable = Math.max(0, Math.min(amountDue, Number(balance?.balance) || 0));
+        maxWalletUsable = Math.max(0, Math.min(effectiveDue, Number(balance?.balance) || 0));
         if (requestedWalletAmount > maxWalletUsable) {
           errors.push({
             message: 'Insufficient wallet balance.',
@@ -1710,10 +1722,7 @@ export class PaymentService {
       }
     }
 
-    const walletApplied = Math.min(requestedWalletAmount, maxWalletUsable, amountDue);
-    const paymentMode =
-      payload?.paymentMode ||
-      (requestedWalletAmount > 0 ? 'wallet_only' : 'bank_transfer');
+    const walletApplied = Math.min(requestedWalletAmount, maxWalletUsable, effectiveDue);
 
     let cashDue = 0;
     let payableNow = 0;
@@ -1723,7 +1732,7 @@ export class PaymentService {
       cashDue = 0;
       payableNow = walletApplied;
       requiresScreenshot = false;
-      if (walletApplied <= 0 && amountDue > 0) {
+      if (walletApplied <= 0 && effectiveDue > 0) {
         errors.push({
           message: 'Please specify wallet credits to apply.',
           code: 'payment_amount_required',
@@ -1736,11 +1745,11 @@ export class PaymentService {
           code: 'wallet_not_allowed',
         });
       }
-      cashDue = amountDue;
-      payableNow = amountDue;
+      cashDue = effectiveDue;
+      payableNow = effectiveDue;
       requiresScreenshot = cashDue > 0;
     } else {
-      cashDue = Math.max(0, amountDue - walletApplied);
+      cashDue = Math.max(0, effectiveDue - walletApplied);
       payableNow = walletApplied + cashDue;
       requiresScreenshot = cashDue > 0;
     }
@@ -1750,6 +1759,7 @@ export class PaymentService {
       message: 'Payment quote resolved.',
       data: {
         amountDue,
+        partialDue,
         discountApplied,
         maxWalletUsable,
         walletApplied,
@@ -2061,6 +2071,18 @@ export class PaymentService {
       });
     }
 
+    const isPartialPayment = createPaymentDto.paymentType === 'partialPayment';
+    const effectiveDue = isPartialPayment
+      ? this.computePartialDue(currentAmountDue)
+      : currentAmountDue;
+
+    if (effectiveDue <= 0) {
+      throw new BadRequestException({
+        message: 'No payment is due for this registration.',
+        code: 'no_payment_due',
+      });
+    }
+
     const requestedWalletAmount = Math.max(
       0,
       Math.floor(Number((createPaymentDto as any)?.walletAmount) || 0),
@@ -2074,7 +2096,7 @@ export class PaymentService {
         ? Math.max(0, Math.floor(Number(currentDiscountApplied) || 0))
         : legacyDiscount;
     const discountDelta = Math.max(0, requestedDiscount - currentDiscountApplied);
-    const dueAfterDiscount = Math.max(0, currentAmountDue - discountDelta);
+    const dueAfterDiscount = Math.max(0, effectiveDue - discountDelta);
     if (requestedWalletAmount > dueAfterDiscount) {
       throw new BadRequestException({
         message: "Wallet amount can't exceed remaining due.",
@@ -2093,12 +2115,19 @@ export class PaymentService {
         ? createPaymentDto.bankAccountLabel.trim()
         : '';
 
+    if (isPartialPayment && walletToApply + manualAmount !== dueAfterDiscount) {
+      throw new BadRequestException({
+        message: 'Payment amount must equal remaining due.',
+        code: 'payment_amount_must_match_due',
+      });
+    }
+
     if (walletToApply <= 0 && manualAmount <= 0) {
       throw new BadRequestException({
-        message: currentAmountDue <= 0
+        message: effectiveDue <= 0
           ? 'No payment is due for this registration.'
           : 'Please specify a payment amount or wallet credits to apply.',
-        code: currentAmountDue <= 0 ? 'no_payment_due' : 'payment_amount_required',
+        code: effectiveDue <= 0 ? 'no_payment_due' : 'payment_amount_required',
       });
     }
 
