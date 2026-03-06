@@ -646,6 +646,31 @@ export class UserService {
     };
   }
 
+  async sendLoginPassword(email: string) {
+    const user = await this.userModel.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Generate a 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.password = otp;
+    user.emailVerified = true;
+
+    if (!user.verification?.status) {
+      user.verification = (user.verification || {}) as any;
+      user.verification.status = VerificationStatus.UNVERIFIED;
+    }
+
+    await user.save();
+    await this.mailService.sendEmailVerification(user.email, otp);
+
+    return {
+      message: 'Password sent to your email',
+      email: user.email,
+    };
+  }
+
   // Refresh Access Token
   async refreshAccessToken(
     refreshAccessTokenDto: RefreshAccessTokenDto,
