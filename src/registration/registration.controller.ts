@@ -96,6 +96,23 @@ export class RegistrationController {
     }
 
     @UseGuards(JwtAuthGuard)
+    @Get('/check/:flagshipId')
+    async checkExistingRegistration(
+        @GetUser() user: User,
+        @Param('flagshipId') flagshipId: string,
+    ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
+        return {
+            statusCode: 200,
+            message: 'Registration check complete',
+            data: await this.registrationService.checkExistingRegistration(flagshipId, userId),
+        };
+    }
+
+    @UseGuards(JwtAuthGuard)
     @Get('/getRegistrationById/:registrationId')
     async getRegistrationById(
         @GetUser() user: User,
