@@ -1292,7 +1292,11 @@ export class UserService {
   private async isEmailUnique(email: string) {
     const user = await this.userModel.findOne({ email });
     if (user) {
-      throw new BadRequestException('Email already exists.');
+      throw new AppException(
+        ErrorCode.USER_EMAIL_ALREADY_EXISTS,
+        'Email already exists',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
