@@ -91,6 +91,15 @@ export class CreatePaymentDto {
   walletUseId?: string;
 
   @ApiProperty({
+    example: 'b7b0f5d7-2e7c-4c2a-9ab2-8e8f7c0a6a61',
+    description: 'Client-generated id for payment submission idempotency',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+
+  @ApiProperty({
     example: 0,
     description: 'Discount amount to be applied',
     required: false,

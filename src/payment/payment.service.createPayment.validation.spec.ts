@@ -2,7 +2,7 @@ import { PaymentService } from './payment.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 
 describe('PaymentService createPayment validations', () => {
-  const createService = (amountDue: number, pendingPayment = false) => {
+  const createService = (amountDue: number) => {
     const registration = {
       _id: 'registration-1',
       userId: 'user-1',
@@ -15,11 +15,13 @@ describe('PaymentService createPayment validations', () => {
       findByIdAndUpdate: jest.fn().mockResolvedValue(null),
     } as any;
 
-    const findOneMock = jest.fn().mockImplementation(({ status }) =>
-      status === 'pendingApproval' && pendingPayment
-        ? Promise.resolve({ _id: 'pending-payment' })
-        : Promise.resolve(null),
-    );
+    const findOneMock = jest.fn().mockReturnValue({
+      sort: () => ({
+        lean: () => ({
+          exec: async () => null,
+        }),
+      }),
+    });
 
     const paymentModel = {
       findOne: findOneMock,
@@ -67,19 +69,4 @@ describe('PaymentService createPayment validations', () => {
     });
   });
 
-  it('rejects when a payment is already pending approval', async () => {
-    const { service } = createService(100, true);
-    await expect(
-      service.createPayment(
-        {
-          registration: 'registration-1',
-          amount: 100,
-        } as any,
-        undefined,
-        undefined,
-      ),
-    ).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'payment_pending_approval' }),
-    });
-  });
 });

@@ -630,6 +630,9 @@ export class PaymentService {
           paymentType: payment.paymentType,
           paymentMethod: payment.paymentMethod,
           status: payment.status,
+          walletRequested: payment.walletRequested,
+          walletApplied: payment.walletApplied,
+          bankAccountLabel: payment.bankAccountLabel,
           screenshotUrl,
           cashProofUrl,
           bankProofUrl,
@@ -1624,12 +1627,6 @@ export class PaymentService {
       .lean()
       .exec();
     const pendingApproval = Boolean(pendingPayment?._id);
-    if (pendingApproval) {
-      errors.push({
-        message: 'A payment for this registration is already pending approval.',
-        code: 'payment_pending_approval',
-      });
-    }
 
     const registrationPrice =
       typeof (registration as any)?.price === 'number'
@@ -1834,12 +1831,6 @@ export class PaymentService {
 
     const registrationUserId = (registration as any).userId || (registration as any).user;
 
-    const pendingPayment = await this.paymentModel
-      .findOne({ registration: createPaymentDto.registration, status: 'pendingApproval' })
-      .select('_id')
-      .lean()
-      .exec();
-
     const now = new Date();
     const waitlistOfferStatus = String((registration as any)?.waitlistOfferStatus || 'none');
     const waitlistOfferExpiresAt = (registration as any)?.waitlistOfferExpiresAt;
@@ -1849,8 +1840,17 @@ export class PaymentService {
       new Date(waitlistOfferExpiresAt) <= now
     ) {
       const flagshipId = (registration as any).flagship || (registration as any).flagshipId;
-      if (pendingPayment?._id) {
-        await this.rejectPaymentSystem(String(pendingPayment._id), 'waitlist_offer_expired');
+      const pendingPayments = await this.paymentModel
+        .find({ registration: createPaymentDto.registration, status: 'pendingApproval' })
+        .select('_id')
+        .lean()
+        .exec();
+      if (pendingPayments?.length) {
+        await Promise.all(
+          pendingPayments.map((pending) =>
+            this.rejectPaymentSystem(String(pending._id), 'waitlist_offer_expired'),
+          ),
+        );
       }
       await this.registrationModel.findByIdAndUpdate(createPaymentDto.registration, {
         status: 'waitlisted',
@@ -1873,13 +1873,6 @@ export class PaymentService {
       });
     }
 
-    if (pendingPayment?._id) {
-      throw new BadRequestException({
-        message: 'A payment for this registration is already pending approval.',
-        code: 'payment_pending_approval',
-      });
-    }
-
     if (requester && registrationUserId && registrationUserId.toString() !== requester._id?.toString()) {
       throw new ForbiddenException('You can only pay for your own registration.');
     }
@@ -1891,6 +1884,18 @@ export class PaymentService {
         throw new BadRequestException('User for registration not found.');
       }
       this.assertUserVerifiedForPayment(registrationUser);
+    }
+
+    if (createPaymentDto?.idempotencyKey) {
+      const existing = await this.paymentModel
+        .findOne({
+          registration: createPaymentDto.registration,
+          idempotencyKey: createPaymentDto.idempotencyKey,
+        })
+        .exec();
+      if (existing) {
+        return existing;
+      }
     }
 
     const notifyUserPaymentSubmitted = async (paymentDoc: any) => {
@@ -2182,53 +2187,9 @@ export class PaymentService {
         : walletToApply > 0
           ? 'wallet_only'
           : 'bank_transfer';
+    const isWalletOnly = walletToApply > 0 && manualAmount <= 0;
 
-    if (manualAmount <= 0) {
-      if (walletToApply > 0) {
-        const paymentData = {
-          ...createPaymentDto,
-          bankAccount: undefined,
-          bankAccountLabel: bankAccountLabel || undefined,
-          paymentMethod,
-          walletRequested: walletToApply,
-          walletApplied: 0,
-          amount: 0,
-          status: 'pendingApproval',
-          resubmissionOf: resubmissionOf || undefined,
-          resubmissionRoot: resubmissionRoot || undefined,
-          resubmissionCount: resubmissionCount || 0,
-        };
-
-        const payment = new this.paymentModel(paymentData);
-        const savedPayment = await payment.save();
-
-        await this.registrationModel.findByIdAndUpdate(
-          createPaymentDto.registration,
-          {
-            paymentId: savedPayment._id,
-            payment: savedPayment._id,
-            latestPaymentId: savedPayment._id,
-            latestPaymentStatus: 'pendingApproval',
-            latestPaymentCreatedAt: savedPayment.createdAt,
-            latestPaymentType: savedPayment.paymentType,
-          },
-        );
-
-        await notifyUserPaymentSubmitted(savedPayment);
-        await notifyAdminOnReupload(savedPayment);
-
-        return {
-          statusCode: 200,
-          message: 'Payment submitted for approval.',
-          data: {
-            registrationId: createPaymentDto.registration,
-            paymentId: savedPayment._id,
-            walletRequested: walletToApply,
-            amountDue: currentAmountDue,
-            pendingApproval: true,
-          },
-        };
-      }
+    if (manualAmount <= 0 && walletToApply <= 0) {
       throw new BadRequestException({
         message: 'Payment amount is required.',
         code: 'payment_amount_required',
@@ -2238,26 +2199,27 @@ export class PaymentService {
     // Use computed/legacy discount value
     const discount = requestedDiscount || 0;
 
-    // Create payment with discount
     const paymentData = {
       ...createPaymentDto,
-      bankAccount: bankAccountId || undefined,
-      bankAccountLabel: bankAccountLabel || undefined,
+      bankAccount: manualAmount > 0 ? bankAccountId || undefined : undefined,
+      bankAccountLabel: manualAmount > 0 ? bankAccountLabel || undefined : undefined,
       paymentMethod,
       walletRequested: walletToApply,
       walletApplied: 0,
-      discount: discount,
+      discount,
+      status: 'pendingApproval',
       resubmissionOf: resubmissionOf || undefined,
       resubmissionRoot: resubmissionRoot || undefined,
       resubmissionCount: resubmissionCount || 0,
     };
 
     let savedPayment: any = null;
+    let skipDelete = false;
     try {
       const payment = new this.paymentModel(paymentData);
       savedPayment = await payment.save();
 
-      if (savedPayment && savedPayment._id) {
+      if (savedPayment && savedPayment._id && manualAmount > 0 && screenshot) {
         const screenshotUrl = await this.storageService.uploadFile(
           savedPayment._id.toString(),
           screenshot.buffer,
@@ -2265,26 +2227,61 @@ export class PaymentService {
         );
         savedPayment.screenshot = screenshotUrl;
         await savedPayment.save();
+      }
 
-        // Update registration with payment ID if registration exists
-        if (createPaymentDto.registration) {
-          const registration = await this.registrationModel.findById(
+      if (createPaymentDto.registration) {
+        const registration = await this.registrationModel.findById(
+          createPaymentDto.registration,
+        );
+        if (registration) {
+          await this.registrationModel.findByIdAndUpdate(
             createPaymentDto.registration,
+            {
+              paymentId: savedPayment._id,
+              payment: savedPayment._id,
+              latestPaymentId: savedPayment._id,
+              latestPaymentStatus: 'pendingApproval',
+              latestPaymentCreatedAt: savedPayment.createdAt,
+              latestPaymentType: savedPayment.paymentType,
+            },
           );
-            if (registration) {
-              await this.registrationModel.findByIdAndUpdate(
-                createPaymentDto.registration,
-                {
-                  paymentId: savedPayment._id,
-                  payment: savedPayment._id,
-                  latestPaymentId: savedPayment._id,
-                  latestPaymentStatus: 'pendingApproval',
-                  latestPaymentCreatedAt: savedPayment.createdAt,
-                  latestPaymentType: savedPayment.paymentType,
-                },
-              );
-            }
         }
+      }
+
+      if (walletToApply > 0) {
+        const walletDebitId =
+          typeof createPaymentDto.walletUseId === 'string' && createPaymentDto.walletUseId.trim()
+            ? createPaymentDto.walletUseId.trim()
+            : `payment:${savedPayment._id.toString()}`;
+        try {
+          await this.walletService.debit({
+            userId: requesterId || registrationUserId?.toString?.() || '',
+            amount: walletToApply,
+            type: 'flagship_payment_wallet_debit',
+            sourceId: walletDebitId,
+            sourceType: 'flagship_payment',
+            metadata: {
+              paymentId: savedPayment._id?.toString?.(),
+              registrationId: createPaymentDto.registration,
+              walletApplied: walletToApply,
+            },
+          });
+          savedPayment.walletDebitId = walletDebitId;
+          savedPayment.walletApplied = walletToApply;
+          await savedPayment.save();
+        } catch (error: any) {
+          const code =
+            error?.response?.data?.code ||
+            error?.code ||
+            'wallet_debit_failed';
+          skipDelete = true;
+          await this.rejectPaymentSystem(savedPayment._id.toString(), code);
+          throw error;
+        }
+      }
+
+      if (isWalletOnly) {
+        return await this.approvePayment(savedPayment._id.toString(), requester);
       }
 
       await notifyUserPaymentSubmitted(savedPayment);
@@ -2292,7 +2289,7 @@ export class PaymentService {
 
       return savedPayment;
     } catch (err) {
-      if (savedPayment?._id) {
+      if (savedPayment?._id && !skipDelete) {
         try {
           await this.paymentModel.deleteOne({ _id: savedPayment._id });
         } catch (e) {
@@ -2339,18 +2336,6 @@ export class PaymentService {
       throw new BadRequestException({
         message: 'Refunded or refunding registrations cannot accept payments.',
         code: 'registration_refund_locked',
-      });
-    }
-
-    const pendingPayment = await this.paymentModel
-      .findOne({ registration: payload.registration, status: 'pendingApproval' })
-      .select('_id')
-      .lean()
-      .exec();
-    if (pendingPayment?._id) {
-      throw new BadRequestException({
-        message: 'A payment for this registration is already pending approval.',
-        code: 'payment_pending_approval',
       });
     }
 
@@ -2680,7 +2665,24 @@ export class PaymentService {
           requireActive: false,
         });
         const waitlistNote = this.buildRejectionPublicNote(waitlistReason);
-        await this.rejectPaymentSystem(payment._id.toString(), 'waitlist_offer_expired', waitlistNote);
+        const pendingPayments = await this.paymentModel
+          .find({ registration: payment.registration, status: 'pendingApproval' })
+          .select('_id')
+          .lean()
+          .exec();
+        if (pendingPayments?.length) {
+          await Promise.all(
+            pendingPayments.map((pending) =>
+              this.rejectPaymentSystem(String(pending._id), 'waitlist_offer_expired', waitlistNote),
+            ),
+          );
+        } else {
+          await this.rejectPaymentSystem(
+            payment._id.toString(),
+            'waitlist_offer_expired',
+            waitlistNote,
+          );
+        }
         await this.registrationModel.findByIdAndUpdate(payment.registration, {
           status: 'waitlisted',
           waitlistAt: now,
@@ -2800,8 +2802,14 @@ export class PaymentService {
         typeof (payment as any)?.walletApplied === 'number'
           ? (payment as any).walletApplied
           : 0;
-      const walletToApply =
-        paymentWalletRequested > 0 && paymentWalletApplied < paymentWalletRequested
+      const walletAppliedEffective =
+        paymentWalletApplied > 0
+          ? paymentWalletApplied
+          : paymentWalletRequested > 0
+            ? paymentWalletRequested
+            : 0;
+      const walletToDebit =
+        paymentWalletRequested > 0 && paymentWalletApplied <= 0
           ? paymentWalletRequested
           : 0;
 
@@ -2810,7 +2818,7 @@ export class PaymentService {
       let walletTx: any = null;
 
       try {
-        if (walletToApply > 0) {
+        if (walletToDebit > 0) {
           if (!registrationUserId) {
             throw new BadRequestException({
               message: 'User not found for wallet debit.',
@@ -2848,14 +2856,14 @@ export class PaymentService {
           try {
             walletTx = await this.walletService.debit({
               userId: registrationUserId,
-              amount: walletToApply,
+              amount: walletToDebit,
               type: 'flagship_payment_wallet_debit',
               sourceId: walletSourceId,
               sourceType: 'flagship_payment',
               metadata: {
                 paymentId: payment._id?.toString(),
                 registrationId: registration._id?.toString(),
-                walletApplied: walletToApply,
+                walletApplied: walletToDebit,
               },
             });
           } catch (err: any) {
@@ -2871,14 +2879,14 @@ export class PaymentService {
               walletSourceId = newDebitId;
               walletTx = await this.walletService.debit({
                 userId: registrationUserId,
-                amount: walletToApply,
+                amount: walletToDebit,
                 type: 'flagship_payment_wallet_debit',
                 sourceId: walletSourceId,
                 sourceType: 'flagship_payment',
                 metadata: {
                   paymentId: payment._id?.toString(),
                   registrationId: registration._id?.toString(),
-                  walletApplied: walletToApply,
+                  walletApplied: walletToDebit,
                 },
               });
             } else {
@@ -2906,8 +2914,8 @@ export class PaymentService {
               && refreshedSeatLocked
               && refreshedPaid) {
               payment.status = 'approved';
-              if (paymentWalletRequested > 0 && paymentWalletApplied < paymentWalletRequested) {
-                payment.walletApplied = paymentWalletRequested;
+              if (walletAppliedEffective > 0 && paymentWalletApplied < walletAppliedEffective) {
+                payment.walletApplied = walletAppliedEffective;
               }
               await payment.save();
               return payment;
@@ -2918,7 +2926,7 @@ export class PaymentService {
         const updatedDiscountApplied = currentDiscountApplied + discountDelta;
         const newAmountDue = Math.max(
           0,
-          currentAmountDue - payment.amount - discountDelta - walletToApply,
+          currentAmountDue - payment.amount - discountDelta - walletAppliedEffective,
         );
         remainingDue = newAmountDue;
 
@@ -3007,10 +3015,10 @@ export class PaymentService {
               latestPaymentCreatedAt: payment.createdAt,
               latestPaymentType: payment.paymentType,
             };
-            if (walletToApply > 0) {
+            if (walletAppliedEffective > 0) {
               registrationUpdate.walletPaid = Math.max(
                 0,
-                currentWalletPaid + walletToApply,
+                currentWalletPaid + walletAppliedEffective,
               );
             }
 
@@ -3028,11 +3036,8 @@ export class PaymentService {
               payment.reviewedBy = admin?._id as any;
               payment.reviewedAt = new Date();
             }
-            if (walletToApply > 0) {
-              payment.walletApplied = Math.max(
-                paymentWalletApplied,
-                paymentWalletRequested,
-              );
+            if (walletAppliedEffective > 0 && paymentWalletApplied < walletAppliedEffective) {
+              payment.walletApplied = walletAppliedEffective;
             }
             await payment.save({ session: txnSession });
           });
@@ -3040,6 +3045,14 @@ export class PaymentService {
           await txnSession.endSession();
         }
       } catch (err) {
+        const appliedWallet =
+          typeof (payment as any)?.walletApplied === 'number'
+            ? (payment as any).walletApplied
+            : 0;
+        const appliedDebitId = payment.walletDebitId;
+        const shouldVoidApplied =
+          !walletDebited && appliedWallet > 0 && typeof appliedDebitId === 'string' && appliedDebitId;
+
         if (walletDebited && walletSourceId) {
           try {
             await this.walletService.voidBySource({
@@ -3052,6 +3065,19 @@ export class PaymentService {
             await payment.save();
           } catch (e) {
             console.log('Failed to rollback wallet debit after approval error:', e);
+          }
+        } else if (shouldVoidApplied) {
+          try {
+            await this.walletService.voidBySource({
+              type: 'flagship_payment_wallet_debit',
+              sourceId: appliedDebitId,
+              voidedBy: registrationUserId || undefined,
+              note: 'Rolled back previously applied wallet debit after approval failure',
+            });
+            payment.walletDebitId = '';
+            await payment.save();
+          } catch (e) {
+            console.log('Failed to rollback applied wallet debit after approval error:', e);
           }
         }
         throw err;
@@ -3081,6 +3107,11 @@ export class PaymentService {
           process.env.FRONTEND_URL && registrationId
             ? `${process.env.FRONTEND_URL}/musafir/payment/${registrationId}`
             : undefined;
+        const walletAppliedForNotification =
+          typeof (payment as any)?.walletApplied === 'number'
+            ? (payment as any).walletApplied
+            : 0;
+        const totalPaid = Math.max(0, Number(payment.amount) || 0) + Math.max(0, walletAppliedForNotification);
 
         if (userId && tripName) {
           try {
@@ -3099,7 +3130,7 @@ export class PaymentService {
                 paymentId: payment._id?.toString(),
                 registrationId: reg._id?.toString(),
                 flagshipId,
-                amount: payment.amount,
+                amount: totalPaid,
                 remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
               },
             });
@@ -3113,7 +3144,7 @@ export class PaymentService {
             await this.mailService.sendPaymentApprovedEmail(
               user.email,
               user.fullName || 'Musafir',
-              payment.amount,
+              totalPaid,
               tripName,
               payment.createdAt,
               {
@@ -3177,23 +3208,59 @@ export class PaymentService {
       throw new BadRequestException('Payment not found');
     }
 
-    if (payment.registration) {
-      await this.registrationModel.findByIdAndUpdate(payment.registration, {
-        isPaid: false,
-        paymentId: null,
-        payment: null,
-        latestPaymentId: payment._id,
-        latestPaymentStatus: 'rejected',
-        latestPaymentCreatedAt: payment.createdAt,
-        latestPaymentType: payment.paymentType,
-      });
-
+    if (payment.walletDebitId && typeof (payment as any).walletApplied === 'number'
+      && (payment as any).walletApplied > 0) {
       try {
-        const registration = await this.registrationModel
+        await this.walletService.voidBySource({
+          type: 'flagship_payment_wallet_debit',
+          sourceId: payment.walletDebitId,
+          voidedBy: (options.admin as any)?._id?.toString?.(),
+          note: 'Voided after payment rejection',
+        });
+      } catch (error: any) {
+        const reason = error?.response?.data?.code || error?.code || error?.message || 'unknown';
+        const existingNote = (payment as any).rejectionInternalNote;
+        const voidNote = `Wallet void failed: ${reason}`;
+        const combinedNote = existingNote ? `${existingNote} | ${voidNote}` : voidNote;
+        await this.paymentModel.findByIdAndUpdate(payment._id, {
+          $set: { rejectionInternalNote: combinedNote },
+        });
+        (payment as any).rejectionInternalNote = combinedNote;
+        console.log('Failed to void wallet debit after rejection:', error);
+      }
+    }
+
+    if (payment.registration) {
+      try {
+        const registration: any = await this.registrationModel
           .findById(payment.registration)
           .lean()
           .exec();
         if (registration) {
+          const paymentIdString = payment._id?.toString?.() || String(payment._id);
+          const latestPaymentId =
+            registration?.latestPaymentId?.toString?.() || String(registration?.latestPaymentId || '');
+          const currentPaymentId =
+            registration?.paymentId?.toString?.() ||
+            registration?.payment?.toString?.() ||
+            String(registration?.paymentId || registration?.payment || '');
+          const isLatest = latestPaymentId && latestPaymentId === paymentIdString;
+          const isCurrent = currentPaymentId && currentPaymentId === paymentIdString;
+          const update: any = {};
+          if (isCurrent) {
+            update.paymentId = null;
+            update.payment = null;
+          }
+          if (isLatest) {
+            update.isPaid = false;
+            update.latestPaymentId = payment._id;
+            update.latestPaymentStatus = 'rejected';
+            update.latestPaymentCreatedAt = payment.createdAt;
+            update.latestPaymentType = payment.paymentType;
+          }
+          if (Object.keys(update).length > 0) {
+            await this.registrationModel.findByIdAndUpdate(payment.registration, update);
+          }
           await this.releaseDiscountForRegistration(registration);
         }
       } catch (error) {
