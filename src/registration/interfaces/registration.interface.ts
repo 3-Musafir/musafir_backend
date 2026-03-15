@@ -2,6 +2,7 @@ import { Flagship } from "src/flagship/interfaces/flagship.interface";
 import { Payment } from "src/payment/interface/payment.interface";
 import { Rating } from "src/Rating/interfaces/rating.interface";
 import { User } from "src/user/interfaces/user.interface";
+import { RegistrationStatus } from "src/constants/registration-status.enum";
 
 export interface RegistrationLinkedContact {
   email: string;
@@ -66,11 +67,6 @@ export class Registration {
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
   ratingId?: string | Rating;
-  status:
-    | 'new'
-    | 'waitlisted'
-    | 'onboarding'
-    | 'payment'
-    | 'confirmed';
+  status: RegistrationStatus;
   comment: string;
 }

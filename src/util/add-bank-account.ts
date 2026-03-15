@@ -17,7 +17,7 @@ async function run() {
     _id: new mongoose.Types.ObjectId(BANK_ACCOUNT_ID),
     bankName: 'Alfalah Bank (Muhammad Hameez Rizwan)',
     accountNumber: '55015000960473',
-    IBAN: '55015000960473',
+    IBAN: 'PK98ALFH5501005000960473',
   };
 
   const existingById = await BankAccount.findById(payload._id).exec();

@@ -8,6 +8,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { PaymentService } from './payment/payment.service';
 import { RegistrationService } from './registration/registration.service';
+import { RegistrationStatus } from './constants/registration-status.enum';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -177,7 +178,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -260,7 +261,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -340,7 +341,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -424,7 +425,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -542,7 +543,7 @@ describe('C-8: approvePayment uses MongoDB transaction', () => {
 
     const registrationDoc: any = {
       _id: 'reg1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       flagship: 'flag1',
       userId: 'user1',
       userGender: 'male',
@@ -660,7 +661,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -671,7 +672,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
       findByIdAndUpdate: jest.fn(async () => ({})),
       findOneAndUpdate: jest.fn(async () => ({
         _id: 'reg1',
-        status: 'payment',
+        status: RegistrationStatus.PAYMENT,
         waitlistOfferStatus: 'accepted',
       })),
     };
@@ -732,7 +733,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -743,7 +744,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
       findByIdAndUpdate: jest.fn(async () => ({})),
       findOneAndUpdate: jest.fn(async () => ({
         _id: 'reg1',
-        status: 'payment',
+        status: RegistrationStatus.PAYMENT,
         waitlistOfferStatus: 'accepted',
       })),
     };
@@ -800,7 +801,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -878,7 +879,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -889,7 +890,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
       findByIdAndUpdate: jest.fn(async () => ({})),
       findOneAndUpdate: jest.fn(async () => ({
         _id: 'reg1',
-        status: 'payment',
+        status: RegistrationStatus.PAYMENT,
       })),
     };
     const userModel: any = {
@@ -946,7 +947,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -1020,7 +1021,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
           exec: async () => ({
             _id: 'reg1',
             userId: 'user1',
-            status: 'waitlisted',
+            status: RegistrationStatus.WAITLISTED,
             waitlistOfferStatus: 'offered',
             waitlistOfferExpiresAt: new Date(Date.now() + 3600000),
             flagship: 'flag1',
@@ -1031,7 +1032,7 @@ describe('C-9: respondWaitlistOffer uses atomic seat check', () => {
       findByIdAndUpdate: jest.fn(async () => ({})),
       findOneAndUpdate: jest.fn(async () => ({
         _id: 'reg1',
-        status: 'payment',
+        status: RegistrationStatus.PAYMENT,
       })),
     };
     const userModel: any = {

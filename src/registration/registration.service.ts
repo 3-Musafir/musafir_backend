@@ -17,6 +17,7 @@ import { NotificationService } from 'src/notifications/notification.service';
 import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 import { ErrorCode } from 'src/constants/error-codes';
 import { computeSettlementStatus } from './settlement-status.util';
 import { buildProfileStatus, isFlagshipProfileComplete } from 'src/user/profile-status.util';
@@ -63,7 +64,7 @@ export class RegistrationService {
 
     // Mark confirmed registrations as completed once the trip has ended.
     const confirmedRegs = await this.registrationModel
-      .find({ userId, status: 'confirmed', seatLocked: true, completedAt: { $exists: false } })
+      .find({ userId, status: RegistrationStatus.CONFIRMED, seatLocked: true, completedAt: { $exists: false } })
       .populate('flagship')
       .exec();
 
@@ -494,7 +495,7 @@ export class RegistrationService {
     const now = new Date();
     const filter = {
       flagship: flagshipId,
-      status: 'waitlisted',
+      status: RegistrationStatus.WAITLISTED,
       waitlistOfferStatus: 'offered',
       waitlistOfferExpiresAt: { $lte: now },
     };
@@ -542,7 +543,7 @@ export class RegistrationService {
     const candidates: any[] = await this.registrationModel
       .find({
         flagship: flagshipId,
-        status: { $in: ['payment', 'onboarding'] },
+        status: { $in: [RegistrationStatus.PAYMENT, RegistrationStatus.ONBOARDING] },
         waitlistOfferStatus: 'accepted',
         waitlistOfferExpiresAt: { $lte: now },
       })
@@ -582,11 +583,11 @@ export class RegistrationService {
 
     for (const candidate of candidates) {
       const regId = String(candidate._id);
-      if (candidate.status === 'payment' && pendingSet.has(regId)) {
+      if (candidate.status === RegistrationStatus.PAYMENT && pendingSet.has(regId)) {
         continue;
       }
 
-      if (candidate.status === 'onboarding') {
+      if (candidate.status === RegistrationStatus.ONBOARDING) {
         const user = userById.get(String(candidate.userId || candidate.user));
         const verificationStatus = (user as any)?.verification?.status;
         if (verificationStatus === VerificationStatus.PENDING) {
@@ -608,7 +609,7 @@ export class RegistrationService {
       { _id: { $in: expiredIds } },
       {
         $set: {
-          status: 'waitlisted',
+          status: RegistrationStatus.WAITLISTED,
           waitlistAt: now,
           waitlistOfferStatus: 'expired',
           waitlistOfferResponse: 'declined',
@@ -893,14 +894,14 @@ export class RegistrationService {
 
     const activeOfferMale = await this.registrationModel.countDocuments({
       flagship: flagshipId,
-      status: 'waitlisted',
+      status: RegistrationStatus.WAITLISTED,
       waitlistOfferStatus: 'offered',
       userGender: { $ne: 'female' },
       waitlistOfferExpiresAt: { $gt: now },
     });
     const activeOfferFemale = await this.registrationModel.countDocuments({
       flagship: flagshipId,
-      status: 'waitlisted',
+      status: RegistrationStatus.WAITLISTED,
       waitlistOfferStatus: 'offered',
       userGender: 'female',
       waitlistOfferExpiresAt: { $gt: now },
@@ -914,7 +915,7 @@ export class RegistrationService {
     const sendOfferForBucket = async (bucket: 'male' | 'female') => {
       const query: any = {
         flagship: flagshipId,
-        status: 'waitlisted',
+        status: RegistrationStatus.WAITLISTED,
         waitlistOfferStatus: { $ne: 'offered' },
       };
       if (bucket === 'female') {
@@ -1048,7 +1049,7 @@ export class RegistrationService {
       const updated = await this.registrationModel.findOneAndUpdate(
         {
           _id: registration._id,
-          status: 'waitlisted',
+          status: RegistrationStatus.WAITLISTED,
           waitlistOfferStatus: 'offered',
           waitlistOfferExpiresAt: { $gt: now },
         },
@@ -1117,13 +1118,13 @@ export class RegistrationService {
 
     const isVerified =
       (userDoc as any)?.verification?.status === VerificationStatus.VERIFIED;
-    const nextStatus = isVerified ? 'payment' : 'onboarding';
+    const nextStatus = isVerified ? RegistrationStatus.PAYMENT : RegistrationStatus.ONBOARDING;
 
     const acceptExpiresAt = new Date(Date.now() + acceptWindowMs);
     const updated = await this.registrationModel.findOneAndUpdate(
       {
         _id: registration._id,
-        status: 'waitlisted',
+        status: RegistrationStatus.WAITLISTED,
         waitlistOfferStatus: 'offered',
         waitlistOfferExpiresAt: { $gt: now },
       },
@@ -1166,7 +1167,7 @@ export class RegistrationService {
   private async expireStaleWaitlistsForUser(userId: string): Promise<void> {
     const now = new Date();
     const candidates: any[] = await this.registrationModel
-      .find({ userId, status: 'waitlisted' })
+      .find({ userId, status: RegistrationStatus.WAITLISTED })
       .select('_id userGender flagship')
       .populate({ path: 'flagship', select: 'endDate' })
       .lean()
@@ -1334,8 +1335,8 @@ export class RegistrationService {
       const registrationPrice = this.resolveRegistrationPrice(flagship, registration);
       const initialStatus =
         user?.verification?.status === VerificationStatus.VERIFIED
-          ? 'payment'
-          : 'onboarding';
+          ? RegistrationStatus.PAYMENT
+          : RegistrationStatus.ONBOARDING;
 
       const newRegistration = new this.registrationModel({
         ...registration,
@@ -1682,7 +1683,7 @@ export class RegistrationService {
     }
 
     const status = String(registration.status || '');
-    if (status !== 'confirmed') {
+    if (status !== RegistrationStatus.CONFIRMED) {
       throw new BadRequestException({
         message: 'Only confirmed seats can be cancelled.',
         code: 'cancel_not_eligible',
@@ -1690,7 +1691,7 @@ export class RegistrationService {
     }
 
     const updated = await this.registrationModel.findOneAndUpdate(
-      { _id: registration._id, userId: registrationUserId, status: 'confirmed', cancelledAt: { $exists: false } },
+      { _id: registration._id, userId: registrationUserId, status: RegistrationStatus.CONFIRMED, cancelledAt: { $exists: false } },
       { $set: { cancelledAt: new Date(), seatLocked: false, settlementStatus: 'cancelled' } },
       { new: true },
     );
@@ -1806,7 +1807,7 @@ export class RegistrationService {
     const tripName =
       (flagshipDoc && (flagshipDoc as any)?.tripName) || 'your trip';
     const seatLocked = Boolean(registration.seatLocked);
-    const isWaitlisted = String(registration.status || '') === 'waitlisted';
+    const isWaitlisted = String(registration.status || '') === RegistrationStatus.WAITLISTED;
     const bucket = resolveSeatBucket(
       registration.userGender || user?.gender,
     );

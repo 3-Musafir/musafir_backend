@@ -22,6 +22,7 @@ import { StorageService } from 'src/storage/storageService';
 import sharp from 'sharp';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 import { UserService } from 'src/user/user.service';
 import { MUSAFIR_DISCOUNT_MAX } from 'src/discounts/musafir.constants';
 
@@ -1030,7 +1031,7 @@ export class FlagshipService {
     if (filters?.rejectedOnly) {
       pipeline.push({
         $match: {
-          status: 'waitlisted',
+          status: RegistrationStatus.WAITLISTED,
           waitlistOfferStatus: 'rejected',
         },
       });
@@ -1270,7 +1271,7 @@ export class FlagshipService {
       flagship: flagshipObjectId,
       cancelledAt: { $exists: false },
       refundStatus: { $nin: ['pending', 'processing', 'refunded'] },
-      status: { $in: ['payment', 'onboarding', 'new', 'confirmed'] },
+      status: { $in: [RegistrationStatus.PAYMENT, RegistrationStatus.ONBOARDING, RegistrationStatus.NEW, RegistrationStatus.CONFIRMED] },
       isPaid: { $ne: true },
       amountDue: { $gt: 0 },
       latestPaymentStatus: { $ne: 'pendingApproval' },
@@ -1450,11 +1451,11 @@ export class FlagshipService {
       (startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
 
-    const newCount = registrations.filter((reg) => reg.status === 'new').length;
-    const onboardingCount = registrations.filter((reg) => reg.status === 'onboarding').length;
-    const paymentCount = registrations.filter((reg) => reg.status === 'payment').length;
-    const waitlistedCount = registrations.filter((reg) => reg.status === 'waitlisted').length;
-    const confirmedCount = registrations.filter((reg) => reg.status === 'confirmed').length;
+    const newCount = registrations.filter((reg) => reg.status === RegistrationStatus.NEW).length;
+    const onboardingCount = registrations.filter((reg) => reg.status === RegistrationStatus.ONBOARDING).length;
+    const paymentCount = registrations.filter((reg) => reg.status === RegistrationStatus.PAYMENT).length;
+    const waitlistedCount = registrations.filter((reg) => reg.status === RegistrationStatus.WAITLISTED).length;
+    const confirmedCount = registrations.filter((reg) => reg.status === RegistrationStatus.CONFIRMED).length;
     const cancelledCount = registrations.filter((reg: any) => Boolean((reg as any).cancelledAt)).length;
     const paidCount = registrations.filter((reg) => reg.payment !== null).length;
 

@@ -1,4 +1,5 @@
 import { Schema } from 'mongoose';
+import { getRegistrationStatusValues, RegistrationStatus } from 'src/constants/registration-status.enum';
 
 function transformValue(doc, ret: { [key: string]: any }) {
   delete ret.password;
@@ -68,7 +69,7 @@ export const RegistrationSchema = new Schema(
     price: { type: Number, required: false },
     amountDue: { type: Number, required: false },
     discountApplied: { type: Number, required: false, default: 0 },
-    status: { type: String, required: false, default: 'new' },
+    status: { type: String, enum: getRegistrationStatusValues(), required: false, default: RegistrationStatus.NEW },
     waitlistAt: { type: Date, required: false },
     waitlistOfferSentAt: { type: Date, required: false },
     waitlistOfferAcceptedAt: { type: Date, required: false },

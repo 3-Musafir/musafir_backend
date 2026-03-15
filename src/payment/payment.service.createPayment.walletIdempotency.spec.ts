@@ -1,5 +1,6 @@
 import { PaymentService } from './payment.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 import { WALLET_TX_IDEMPOTENT_MARKER } from 'src/wallet/wallet.service';
 
 describe('PaymentService.createPayment wallet idempotency', () => {
@@ -10,7 +11,7 @@ describe('PaymentService.createPayment wallet idempotency', () => {
       amountDue: 800,
       walletPaid: 200,
       discountApplied: 0,
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       isPaid: false,
       price: 1000,
     };

@@ -20,6 +20,7 @@ import { Registration } from 'src/registration/interfaces/registration.interface
 import { MailService } from 'src/mail/mail.service';
 import { UserService } from 'src/user/user.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 import { ensureUserVerifiedForPayment } from './payment-validation';
 import { NotificationService } from 'src/notifications/notification.service';
 import { computeRefundQuote } from './refund-policy.util';
@@ -1289,7 +1290,7 @@ export class PaymentService {
       {
         _id: registrationId,
         userId: registrationUserId,
-        status: 'confirmed',
+        status: RegistrationStatus.CONFIRMED,
       },
       { $set: { refundStatus: 'processing' } },
       { new: false },
@@ -1599,9 +1600,9 @@ export class PaymentService {
 
     const errors: Array<{ code: string; message: string }> = [];
     const registrationStatus = String((registration as any)?.status || '');
-    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+    if (![RegistrationStatus.PAYMENT, RegistrationStatus.CONFIRMED].includes(registrationStatus as RegistrationStatus)) {
       errors.push({
-        message: registrationStatus === 'waitlisted'
+        message: registrationStatus === RegistrationStatus.WAITLISTED
           ? 'You are currently waitlisted. You will be notified when a seat opens.'
           : 'Registration is not eligible for payment yet.',
         code: 'registration_not_payable',
@@ -1807,9 +1808,9 @@ export class PaymentService {
       : 0;
 
     const registrationStatus = String((registration as any)?.status || '');
-    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+    if (![RegistrationStatus.PAYMENT, RegistrationStatus.CONFIRMED].includes(registrationStatus as RegistrationStatus)) {
       throw new BadRequestException({
-        message: registrationStatus === 'waitlisted'
+        message: registrationStatus === RegistrationStatus.WAITLISTED
           ? 'You are currently waitlisted. You will be notified when a seat opens.'
           : 'Registration is not eligible for payment yet.',
         code: 'registration_not_payable',
@@ -1853,7 +1854,7 @@ export class PaymentService {
         );
       }
       await this.registrationModel.findByIdAndUpdate(createPaymentDto.registration, {
-        status: 'waitlisted',
+        status: RegistrationStatus.WAITLISTED,
         waitlistAt: now,
         waitlistOfferStatus: 'expired',
         waitlistOfferResponse: 'declined',
@@ -2319,7 +2320,7 @@ export class PaymentService {
     }
 
     const registrationStatus = String((registration as any)?.status || '');
-    if (!['payment', 'confirmed'].includes(registrationStatus)) {
+    if (![RegistrationStatus.PAYMENT, RegistrationStatus.CONFIRMED].includes(registrationStatus as RegistrationStatus)) {
       throw new BadRequestException({
         message: 'Registration is not eligible for payment.',
         code: 'registration_not_payable',
@@ -2647,7 +2648,7 @@ export class PaymentService {
           code: 'payment_registration_refund_locked',
         });
       }
-      if (!['payment', 'confirmed'].includes(registrationStatus)) {
+      if (![RegistrationStatus.PAYMENT, RegistrationStatus.CONFIRMED].includes(registrationStatus as RegistrationStatus)) {
         throw new BadRequestException({
           message: 'Registration is not eligible for payment approval.',
           code: 'payment_registration_ineligible',
@@ -2684,7 +2685,7 @@ export class PaymentService {
           );
         }
         await this.registrationModel.findByIdAndUpdate(payment.registration, {
-          status: 'waitlisted',
+          status: RegistrationStatus.WAITLISTED,
           waitlistAt: now,
           waitlistOfferStatus: 'expired',
           waitlistOfferResponse: 'declined',
@@ -2724,7 +2725,7 @@ export class PaymentService {
       const regPaid = Boolean((registration as any)?.isPaid);
       if (latestPaymentId && currentPaymentId && latestPaymentId === currentPaymentId
         && latestStatus === 'approved'
-        && regStatus === 'confirmed'
+        && regStatus === RegistrationStatus.CONFIRMED
         && regSeatLocked
         && regPaid) {
         // Registration already reflects approval for this payment, so we skip wallet/registration
@@ -2910,7 +2911,7 @@ export class PaymentService {
             const refreshedPaid = Boolean((refreshed as any)?.isPaid);
             if (refreshedLatestId && refreshedLatestId === String(payment._id)
               && refreshedStatus === 'approved'
-              && refreshedRegStatus === 'confirmed'
+              && refreshedRegStatus === RegistrationStatus.CONFIRMED
               && refreshedSeatLocked
               && refreshedPaid) {
               payment.status = 'approved';
@@ -2952,7 +2953,7 @@ export class PaymentService {
                   rejectionPublicNote: seatFullNote,
                 }, { session: txnSession });
                 await this.registrationModel.findByIdAndUpdate(payment.registration, {
-                  status: 'waitlisted',
+                  status: RegistrationStatus.WAITLISTED,
                   waitlistAt: new Date(),
                   waitlistOfferStatus: 'none',
                   waitlistOfferResponse: null,
@@ -3005,7 +3006,7 @@ export class PaymentService {
               settlementStatus,
               amountDue: newAmountDue,
               discountApplied: updatedDiscountApplied,
-              status: 'confirmed',
+              status: RegistrationStatus.CONFIRMED,
               seatLocked: true,
               seatLockedAt: new Date(),
               payment: payment._id,

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { RegistrationSchema } from 'src/registration/schemas/registration.schema';
 import { UserSchema } from 'src/user/schemas/user.schema';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 
 const Registration = mongoose.model('registrations', RegistrationSchema);
 const User = mongoose.model('users', UserSchema);
@@ -49,21 +50,21 @@ export async function migrateRegistrationStatuses() {
     const amountDue = typeof reg.amountDue === 'number' ? reg.amountDue : price;
     const hasApprovedPayment = price > 0 && amountDue < price;
 
-    let nextStatus: 'new' | 'waitlisted' | 'onboarding' | 'payment' | 'confirmed' = 'new';
+    let nextStatus: RegistrationStatus = RegistrationStatus.NEW;
     let seatLocked = false;
     let refundStatus: 'none' | 'pending' | 'processing' | 'refunded' | 'rejected' = 'none';
     let completedAt: Date | undefined;
     let cancelledAt: Date | undefined;
 
     if (legacyStatus === 'confirmed' || hasApprovedPayment) {
-      nextStatus = 'confirmed';
+      nextStatus = RegistrationStatus.CONFIRMED;
       seatLocked = legacyStatus !== 'cancelled' && legacyStatus !== 'refunded';
     } else if ((legacyStatus as string) === 'waitlisted') {
-      nextStatus = 'waitlisted';
+      nextStatus = RegistrationStatus.WAITLISTED;
     } else if (legacyStatus === 'onboarding' || !verified) {
-      nextStatus = 'onboarding';
+      nextStatus = RegistrationStatus.ONBOARDING;
     } else if (legacyStatus === 'payment' || verified) {
-      nextStatus = 'payment';
+      nextStatus = RegistrationStatus.PAYMENT;
     }
 
     if (legacyStatus === 'refundProcessing') {

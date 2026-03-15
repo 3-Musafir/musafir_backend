@@ -1,5 +1,6 @@
 import { PaymentService } from './payment.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
+import { RegistrationStatus } from 'src/constants/registration-status.enum';
 
 describe('PaymentService createPayment validations', () => {
   const createService = (amountDue: number) => {
@@ -7,7 +8,7 @@ describe('PaymentService createPayment validations', () => {
       _id: 'registration-1',
       userId: 'user-1',
       flagship: 'flagship-1',
-      status: 'payment',
+      status: RegistrationStatus.PAYMENT,
       amountDue,
     } as any;
     const registrationModel = {

@@ -29,6 +29,7 @@ import {
 import { VerifyUserDto } from './dto/verify-user.dto';
 import { User, UserDocument } from './interfaces/user.interface';
 import { VerificationStatus } from '../constants/verification-status.enum';
+import { RegistrationStatus } from '../constants/registration-status.enum';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorCode } from '../constants/error-codes';
 import {
@@ -169,9 +170,9 @@ export class UserService {
     await this.registrationModel.updateMany(
       {
         userId,
-        status: { $in: ['new', 'onboarding'] },
+        status: { $in: [RegistrationStatus.NEW, RegistrationStatus.ONBOARDING] },
       },
-      { $set: { status: 'payment' } },
+      { $set: { status: RegistrationStatus.PAYMENT } },
     );
   }
 
@@ -1389,7 +1390,7 @@ export class UserService {
     }
 
     const registrations = await this.registrationModel
-      .find({ userId, status: { $in: ['confirmed', 'completed'] } })
+      .find({ userId, status: { $in: [RegistrationStatus.CONFIRMED, 'completed'] } })
       .populate('flagship', 'tripName startDate endDate status destination')
       .select('flagship status completedAt')
       .lean()
