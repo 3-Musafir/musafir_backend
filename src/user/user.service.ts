@@ -235,36 +235,27 @@ export class UserService {
     };
   }
 
-  private ensureReferralPairValid(
+  private ensureReferralCodeValid(
     applicant: UserDocument,
     referral1?: string,
-    referral2?: string,
   ) {
-    if (!referral1 || !referral2) {
+    if (!referral1) {
       throw new AppException(
         ErrorCode.REFERRAL_CODES_REQUIRED,
-        'Two referral codes are required.',
+        'A referral code is required.',
         HttpStatus.BAD_REQUEST,
-        'Please provide two referral codes from verified Musafirs to complete verification.',
-      );
-    }
-    if (referral1 === referral2) {
-      throw new AppException(
-        ErrorCode.REFERRAL_CODES_MUST_DIFFER,
-        'Referral codes must be different.',
-        HttpStatus.BAD_REQUEST,
-        'Both referral codes must be from different people. Please use codes from two different verified Musafirs.',
+        'Please provide a referral code from a female Musafir to complete verification.',
       );
     }
     if (
       applicant.referralID &&
-      (applicant.referralID === referral1 || applicant.referralID === referral2)
+      applicant.referralID === referral1
     ) {
       throw new AppException(
         ErrorCode.REFERRAL_CANNOT_USE_OWN,
         'You cannot use your own referral code.',
         HttpStatus.BAD_REQUEST,
-        'You cannot use your own referral code for verification. Please ask other verified Musafirs for their codes.',
+        'You cannot use your own referral code for verification. Please ask a verified female Musafir for their code.',
       );
     }
   }
@@ -331,7 +322,8 @@ export class UserService {
   async create(
     createUserDto: CreateUserDto,
   ): Promise<{ userId: any; verificationId: string; merged?: boolean }> {
-    const userData = { ...createUserDto, password: generateRandomPassword() };
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const userData = { ...createUserDto, password: otp };
     await this.isEmailUnique(userData.email);
 
     // Check if a legacy phone-only user exists for this phone number.
@@ -348,7 +340,8 @@ export class UserService {
       legacyUser.socialLink = userData.socialLink || legacyUser.socialLink;
       legacyUser.employmentStatus = userData.employmentStatus || legacyUser.employmentStatus;
       legacyUser.university = userData.university || legacyUser.university;
-      legacyUser.password = userData.password;
+      legacyUser.password = otp;
+      legacyUser.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
       legacyUser.emailVerified = false;
       legacyUser.verification.VerificationID = v4();
       legacyUser.verification.status = VerificationStatus.UNVERIFIED;
@@ -362,8 +355,7 @@ export class UserService {
         await this.applyReferralAttribution(legacyUser, userData.referralCode || userData.ref);
       }
 
-      const password = userData.password;
-      await this.mailService.sendEmailVerification(legacyUser.email, password);
+      await this.mailService.sendEmailVerification(legacyUser.email, otp);
       const savedUser = await legacyUser.save();
       return {
         userId: savedUser._id,
@@ -376,12 +368,13 @@ export class UserService {
     const user = new this.userModel(userData);
     await this.applyReferralAttribution(user as any, userData.referralCode || userData.ref);
     user.referralID = generateUniqueCode();
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     user.verification.VerificationID = v4();
     user.verification.status = VerificationStatus.UNVERIFIED;
-    const password = userData.password;
-    await this.mailService.sendEmailVerification(user.email, password);
+    await this.mailService.sendEmailVerification(user.email, otp);
     const savedUser = await user.save();
-    await this.creditSignupReferrerIfEligible(savedUser as any);
+    // Signup referral credit is deferred until email verification
+    // to prevent abuse (see verifyEmail / setUserAsVerified).
     return {
       userId: savedUser._id,
       verificationId: (savedUser.verification as any).VerificationID,
@@ -646,6 +639,37 @@ export class UserService {
     };
   }
 
+  async sendLoginPassword(email: string) {
+    const user = await this.userModel.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      throw new AppException(
+        ErrorCode.USER_NOT_FOUND,
+        'User not found',
+        HttpStatus.NOT_FOUND,
+        'We could not find your email.',
+      );
+    }
+
+    // Generate a 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.password = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.emailVerified = true;
+
+    if (!user.verification?.status) {
+      user.verification = (user.verification || {}) as any;
+      user.verification.status = VerificationStatus.UNVERIFIED;
+    }
+
+    await user.save();
+    await this.mailService.sendEmailVerification(user.email, otp);
+
+    return {
+      message: 'Password sent to your email',
+      email: user.email,
+    };
+  }
+
   // Refresh Access Token
   async refreshAccessToken(
     refreshAccessTokenDto: RefreshAccessTokenDto,
@@ -727,50 +751,35 @@ export class UserService {
       );
     }
 
-    const { referral1, referral2 } = verifyUser;
-    this.ensureReferralPairValid(applicant, referral1, referral2);
+    const { referral1 } = verifyUser;
+    this.ensureReferralCodeValid(applicant, referral1);
 
-    const [user1, user2] = await Promise.all([
-      this.resolveVerifiedReferrer(referral1),
-      this.resolveVerifiedReferrer(referral2),
-    ]);
+    const referrer = await this.resolveVerifiedReferrer(referral1);
 
-    if (!user1 || !user2) {
+    if (!referrer) {
       throw new AppException(
         ErrorCode.REFERRAL_USER_NOT_VERIFIED,
-        'Referral codes must belong to verified users.',
+        'Referral code must belong to a verified user.',
         HttpStatus.BAD_REQUEST,
-        'Invalid referral codes. Please ask verified Musafirs for their codes.',
+        'Invalid referral code. Please ask a verified female Musafir for their code.',
       );
     }
 
-    if (user1._id.equals(user2._id)) {
-      throw new AppException(
-        ErrorCode.REFERRAL_SAME_USER,
-        'Referral codes must come from two different users.',
-        HttpStatus.BAD_REQUEST,
-        'Both referral codes belong to the same person. Please use codes from two different verified Musafirs.',
-      );
-    }
-
-    if (user1._id.equals(applicant._id) || user2._id.equals(applicant._id)) {
+    if (referrer._id.equals(applicant._id)) {
       throw new AppException(
         ErrorCode.REFERRAL_CANNOT_VERIFY_SELF,
         'You cannot verify yourself.',
         HttpStatus.BAD_REQUEST,
-        'You cannot use your own account to verify yourself. Please ask other verified Musafirs for their codes.',
+        'You cannot use your own account to verify yourself. Please ask a verified female Musafir for their code.',
       );
     }
 
-    const genders = [user1.gender, user2.gender];
-    const hasMale = genders.includes('male');
-    const hasFemale = genders.includes('female');
-    if (!hasMale || !hasFemale) {
+    if (referrer.gender !== 'female') {
       throw new AppException(
         ErrorCode.REFERRAL_GENDER_REQUIREMENT,
-        'Referral codes must include at least one male and one female verified Musafir.',
+        'Referral code must be from a female verified Musafir.',
         HttpStatus.BAD_REQUEST,
-        'For verification, you need referral codes from at least one male and one female verified Musafir.',
+        'For verification, you need a referral code from a verified female Musafir.',
       );
     }
 
@@ -780,10 +789,10 @@ export class UserService {
       source: 'referral',
     });
 
-    // Notify referrers their code was used successfully
-    const referrerIds = [user1._id?.toString(), user2._id?.toString()].filter(Boolean) as string[];
-    if (referrerIds.length > 0) {
-      await this.notificationService.createForUsers(referrerIds, {
+    // Notify referrer their code was used successfully
+    const referrerId = referrer._id?.toString();
+    if (referrerId) {
+      await this.notificationService.createForUsers([referrerId], {
         title: 'Your referral verified a Musafir',
         message: `${applicant.fullName || 'A Musafir'} has been verified using your referral code${verifyUser.flagshipId ? ` for flagship ${verifyUser.flagshipId}` : ''}.`,
         type: 'referral',
@@ -896,10 +905,10 @@ export class UserService {
     options?: { method?: string; flagshipId?: string; source?: string },
   ) {
     const user = await this.userModel.findById(id);
-    if (verifyUser.referral1 && verifyUser.referral2) {
+    if (verifyUser.referral1) {
       user.verification.ReferralIDs = [
         verifyUser.referral1,
-        verifyUser.referral2,
+        ...(verifyUser.referral2 ? [verifyUser.referral2] : []),
       ];
     }
     const method = options?.method || user?.verification?.method || 'admin';
@@ -1267,7 +1276,11 @@ export class UserService {
   private async isEmailUnique(email: string) {
     const user = await this.userModel.findOne({ email });
     if (user) {
-      throw new BadRequestException('Email already exists.');
+      throw new AppException(
+        ErrorCode.USER_EMAIL_ALREADY_EXISTS,
+        'Email already exists',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
@@ -1302,6 +1315,9 @@ export class UserService {
   private async setUserAsVerified(user: UserDocument) {
     user.emailVerified = true;
     await user.save();
+    // Award signup referral credit only after email is verified
+    // to prevent abuse from unverified throwaway signups.
+    await this.creditSignupReferrerIfEligible(user);
   }
 
   private async findUserByEmail(email: string): Promise<User> {
@@ -1313,11 +1329,26 @@ export class UserService {
   }
 
   private async checkPassword(attemptPass: string, user) {
+    if (user.otpExpiresAt && user.otpExpiresAt < new Date()) {
+      throw new AppException(
+        ErrorCode.OTP_EXPIRED,
+        'OTP has expired',
+        HttpStatus.BAD_REQUEST,
+        'Your OTP has expired. Please request a new one.',
+      );
+    }
+
     const match = await bcrypt.compare(attemptPass, user.password);
     if (!match) {
       await this.passwordsDoNotMatch(user);
       throw new NotFoundException('Wrong email or password.');
     }
+
+    if (user.otpExpiresAt) {
+      user.otpExpiresAt = undefined;
+      await user.save();
+    }
+
     return match;
   }
 
@@ -1420,6 +1451,11 @@ export class UserService {
         ) {
           user.verification.status = VerificationStatus.VERIFIED;
           user.verification.RequestCall = false;
+        }
+
+        // Carry over gender if the real user doesn't have one
+        if (!user.gender && legacyUser.gender) {
+          user.gender = legacyUser.gender;
         }
 
         // Use legacy referralID if the current user doesn't have a proper one

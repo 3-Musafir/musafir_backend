@@ -140,6 +140,15 @@ export class UserController {
   }
 
   @Public()
+  @Post('send-login-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate a temporary password and email it to an existing user' })
+  @ApiOkResponse({})
+  async sendLoginPassword(@Body() body: { email: string }) {
+    return await this.userService.sendLoginPassword(body.email);
+  }
+
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password after verify reset password' })
@@ -181,7 +190,7 @@ export class UserController {
   ): Promise<any> {
     try {
       const user = req.user;
-      if (verifyDto.referral1 && verifyDto.referral2) {
+      if (verifyDto.referral1) {
         await this.userService.verifyWithReferrals(
           user._id.toString(),
           verifyDto,

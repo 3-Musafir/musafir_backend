@@ -42,6 +42,7 @@ export interface User {
   profileImg?: string;
   email?: string;
   password?: string;
+  otpExpiresAt?: Date;
   googleId?: string;
   phone: string;
   referralID?: string;

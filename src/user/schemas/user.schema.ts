@@ -115,6 +115,8 @@ export const UserSchema = new Schema(
 
     password: { type: String, required: false },
 
+    otpExpiresAt: { type: Date, required: false },
+
     googleId: { type: String, required: false },
 
     // Phone is optional at creation so Google signups can complete and

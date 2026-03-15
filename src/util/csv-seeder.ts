@@ -199,26 +199,83 @@ export async function seedFromCSV() {
     // Upsert by legacyUserKey first; fallback by email if provided
     const query = email ? { $or: [{ legacyUserKey }, { email }] } : { legacyUserKey };
 
-    await User.findOneAndUpdate(
-      query,
-      {
-        $setOnInsert: {
-          referralID: legacyUserKey, // schema requires this; using legacy key is deterministic
-          emailVerified: true,
+    let existingUser = await User.findOne(query);
+
+    // If no match by key/email, try phone-based matching against real users
+    // (e.g. user signed up via Google SSO before seeding happened)
+    if (!existingUser && phone) {
+      const digits = phone.replace(/\D/g, '');
+      if (digits.length >= 10) {
+        const suffix = digits.slice(-10);
+        const escaped = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`${escaped}$`);
+        const phoneMatches = await User.find({
+          phone: { $regex: re },
+          $or: [
+            { email: { $exists: true, $nin: [null, ''] } },
+            { googleId: { $exists: true, $ne: null } },
+          ],
+        })
+          .limit(5)
+          .exec();
+
+        if (phoneMatches.length === 1) {
+          existingUser = phoneMatches[0];
+          console.log(
+            `Phone-matched legacy ${legacyUserKey} → existing user ${existingUser._id} (${existingUser.email || existingUser.phone})`,
+          );
+        }
+      }
+    }
+
+    if (existingUser) {
+      // Merge legacy data into existing user without overwriting their real data
+      existingUser.legacyUserKey = legacyUserKey;
+      existingUser.fullName = existingUser.fullName || (r.fullName || '').trim();
+      existingUser.gender =
+        existingUser.gender ||
+        (r.gender ? String(r.gender).trim().toLowerCase() : undefined);
+      if (!existingUser.email && email) {
+        existingUser.email = email;
+      }
+      if (!existingUser.phone && phone) {
+        existingUser.phone = phone;
+      }
+      existingUser.city =
+        existingUser.city || (r.city ? String(r.city).trim() : undefined);
+      if (
+        verification.status === VerificationStatus.VERIFIED &&
+        existingUser.verification?.status !== VerificationStatus.VERIFIED
+      ) {
+        existingUser.verification.status = VerificationStatus.VERIFIED;
+        existingUser.verification.RequestCall = false;
+      }
+      await existingUser.save();
+    } else {
+      // No existing user found — create a new legacy shell
+      await User.findOneAndUpdate(
+        { legacyUserKey },
+        {
+          $setOnInsert: {
+            referralID: legacyUserKey,
+            emailVerified: true,
+          },
+          $set: {
+            legacyUserKey,
+            fullName: (r.fullName || '').trim(),
+            gender: r.gender
+              ? String(r.gender).trim().toLowerCase()
+              : undefined,
+            email,
+            phone,
+            city: r.city ? String(r.city).trim() : undefined,
+            roles,
+            verification,
+          },
         },
-        $set: {
-          legacyUserKey,
-          fullName: (r.fullName || '').trim(),
-          gender: r.gender ? String(r.gender).trim().toLowerCase() : undefined,
-          email,
-          phone,
-          city: r.city ? String(r.city).trim() : undefined,
-          roles,
-          verification,
-        },
-      },
-      { upsert: true, new: true },
-    );
+        { upsert: true, new: true },
+      );
+    }
   }
 
   // 3) Registrations

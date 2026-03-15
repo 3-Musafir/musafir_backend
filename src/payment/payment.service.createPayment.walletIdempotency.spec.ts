@@ -3,21 +3,33 @@ import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { WALLET_TX_IDEMPOTENT_MARKER } from 'src/wallet/wallet.service';
 
 describe('PaymentService.createPayment wallet idempotency', () => {
-  it('skips registration updates when wallet debit is idempotent', async () => {
+  it('auto-approves wallet-only payments and debits wallet immediately', async () => {
     const registration: any = {
       _id: 'reg1',
       userId: 'user1',
       amountDue: 800,
       walletPaid: 200,
       discountApplied: 0,
-      status: 'pending',
+      status: 'payment',
       isPaid: false,
       price: 1000,
     };
 
-    const paymentModel: any = {
-      exists: jest.fn(async () => null),
+    const paymentModel: any = function (data: any) {
+      Object.assign(this, data);
+      this._id = 'payment1';
+      this.createdAt = new Date();
+      this.save = jest.fn(async () => this);
     };
+    paymentModel.findOne = jest.fn().mockReturnValue({
+      sort: () => ({
+        lean: () => ({
+          exec: async () => null,
+        }),
+      }),
+    });
+    paymentModel.deleteOne = jest.fn(async () => null);
+    paymentModel.findByIdAndUpdate = jest.fn(async () => null);
     const userModel: any = {
       findById: jest.fn(async () => ({
         _id: 'user1',
@@ -25,7 +37,15 @@ describe('PaymentService.createPayment wallet idempotency', () => {
       })),
     };
     const bankAccountModel: any = {};
-    const flagshipModel: any = {};
+    const flagshipModel: any = {
+      findById: jest.fn().mockReturnValue({
+        select: () => ({
+          lean: () => ({
+            exec: async () => null,
+          }),
+        }),
+      }),
+    };
     const registrationModel: any = {
       findById: jest.fn(async () => registration),
       findByIdAndUpdate: jest.fn(),
@@ -60,6 +80,10 @@ describe('PaymentService.createPayment wallet idempotency', () => {
       walletService,
       refundSettlementService,
     );
+    service.approvePayment = jest.fn(async () => ({
+      _id: 'payment1',
+      status: 'approved',
+    })) as any;
 
     const result: any = await service.createPayment(
       {
@@ -68,21 +92,17 @@ describe('PaymentService.createPayment wallet idempotency', () => {
         walletAmount: 200,
         walletUseId: 'attempt_1',
         discount: 0,
+        paymentType: 'fullPayment',
       } as any,
       undefined,
       { _id: 'user1' } as any,
     );
 
     expect(walletService.debit).toHaveBeenCalled();
-    expect(registrationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(service.approvePayment).toHaveBeenCalled();
     expect(result).toMatchObject({
-      statusCode: 200,
-      data: {
-        registrationId: 'reg1',
-        walletApplied: 200,
-        amountDue: 800,
-      },
+      _id: 'payment1',
+      status: 'approved',
     });
   });
 });
-

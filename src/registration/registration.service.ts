@@ -1205,6 +1205,31 @@ export class RegistrationService {
     }
   }
 
+  async checkExistingRegistration(flagshipId: string, userId: string) {
+    const existing = await this.registrationModel
+      .findOne({
+        userId,
+        flagship: flagshipId,
+        cancelledAt: { $exists: false },
+        refundStatus: { $ne: 'refunded' },
+      })
+      .select('_id isPaid status amountDue')
+      .lean()
+      .exec();
+
+    if (!existing) {
+      return { exists: false };
+    }
+
+    return {
+      exists: true,
+      registrationId: String(existing._id),
+      isPaid: Boolean(existing.isPaid),
+      status: existing.status ?? 'unknown',
+      amountDue: existing.amountDue ?? 0,
+    };
+  }
+
   async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<CreateRegistrationResult> {
     try {
       const user = await this.userModel.findById(userId);
