@@ -47,7 +47,7 @@
         margin: 30px 0;
         text-align: center;
       }
-      .password-label {
+      .otp-label {
         font-size: 14px;
         color: #666;
         text-transform: uppercase;
@@ -55,21 +55,21 @@
         margin-bottom: 10px;
         font-weight: 600;
       }
-      .password-box {
+      .otp-box {
         background-color: #ffffff;
         border: 2px solid #ff6b35;
         border-radius: 6px;
         padding: 15px 20px;
         font-family: 'Courier New', monospace;
-        font-size: 24px;
+        font-size: 32px;
         font-weight: bold;
         color: #ff6b35;
-        letter-spacing: 2px;
+        letter-spacing: 8px;
         user-select: all;
         cursor: pointer;
         transition: all 0.3s ease;
       }
-      .password-box:hover {
+      .otp-box:hover {
         background-color: #fff5f2;
         transform: scale(1.02);
       }
@@ -130,9 +130,10 @@
         .header h1 {
           font-size: 24px;
         }
-        .password-box {
-          font-size: 20px;
+        .otp-box {
+          font-size: 24px;
           padding: 12px 15px;
+          letter-spacing: 6px;
         }
       }
     </style>
@@ -153,16 +154,16 @@
         </p>
 
         <div class='password-section'>
-          <div class='password-label'>Your Temporary Password</div>
-          <div class='password-box'>{{password}}</div>
-          <div class='copy-hint'>👆 Copy from above</div>
+          <div class='otp-label'>Your Verification Code</div>
+          <div class='otp-box'>{{password}}</div>
+          <div class='copy-hint'>👆 Enter this code to verify your email</div>
         </div>
 
         <div class='info-box'>
           <p>
             <strong>⚠️ Important:</strong>
-            Please use this temporary password to log in and verify your email
-            address as soon as possible to complete your account setup.
+            Please enter this verification code to verify your email
+            address and complete your account setup. This code will expire shortly.
           </p>
         </div>
 

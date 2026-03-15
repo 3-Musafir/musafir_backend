@@ -322,7 +322,8 @@ export class UserService {
   async create(
     createUserDto: CreateUserDto,
   ): Promise<{ userId: any; verificationId: string; merged?: boolean }> {
-    const userData = { ...createUserDto, password: generateRandomPassword() };
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const userData = { ...createUserDto, password: otp };
     await this.isEmailUnique(userData.email);
 
     // Check if a legacy phone-only user exists for this phone number.
@@ -339,7 +340,8 @@ export class UserService {
       legacyUser.socialLink = userData.socialLink || legacyUser.socialLink;
       legacyUser.employmentStatus = userData.employmentStatus || legacyUser.employmentStatus;
       legacyUser.university = userData.university || legacyUser.university;
-      legacyUser.password = userData.password;
+      legacyUser.password = otp;
+      legacyUser.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
       legacyUser.emailVerified = false;
       legacyUser.verification.VerificationID = v4();
       legacyUser.verification.status = VerificationStatus.UNVERIFIED;
@@ -353,8 +355,7 @@ export class UserService {
         await this.applyReferralAttribution(legacyUser, userData.referralCode || userData.ref);
       }
 
-      const password = userData.password;
-      await this.mailService.sendEmailVerification(legacyUser.email, password);
+      await this.mailService.sendEmailVerification(legacyUser.email, otp);
       const savedUser = await legacyUser.save();
       return {
         userId: savedUser._id,
@@ -367,12 +368,13 @@ export class UserService {
     const user = new this.userModel(userData);
     await this.applyReferralAttribution(user as any, userData.referralCode || userData.ref);
     user.referralID = generateUniqueCode();
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     user.verification.VerificationID = v4();
     user.verification.status = VerificationStatus.UNVERIFIED;
-    const password = userData.password;
-    await this.mailService.sendEmailVerification(user.email, password);
+    await this.mailService.sendEmailVerification(user.email, otp);
     const savedUser = await user.save();
-    await this.creditSignupReferrerIfEligible(savedUser as any);
+    // Signup referral credit is deferred until email verification
+    // to prevent abuse (see verifyEmail / setUserAsVerified).
     return {
       userId: savedUser._id,
       verificationId: (savedUser.verification as any).VerificationID,
@@ -640,12 +642,18 @@ export class UserService {
   async sendLoginPassword(email: string) {
     const user = await this.userModel.findOne({ email: email.toLowerCase() });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new AppException(
+        ErrorCode.USER_NOT_FOUND,
+        'User not found',
+        HttpStatus.NOT_FOUND,
+        'We could not find your email.',
+      );
     }
 
     // Generate a 6-digit numeric OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.password = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     user.emailVerified = true;
 
     if (!user.verification?.status) {
@@ -1307,6 +1315,9 @@ export class UserService {
   private async setUserAsVerified(user: UserDocument) {
     user.emailVerified = true;
     await user.save();
+    // Award signup referral credit only after email is verified
+    // to prevent abuse from unverified throwaway signups.
+    await this.creditSignupReferrerIfEligible(user);
   }
 
   private async findUserByEmail(email: string): Promise<User> {
@@ -1318,11 +1329,26 @@ export class UserService {
   }
 
   private async checkPassword(attemptPass: string, user) {
+    if (user.otpExpiresAt && user.otpExpiresAt < new Date()) {
+      throw new AppException(
+        ErrorCode.OTP_EXPIRED,
+        'OTP has expired',
+        HttpStatus.BAD_REQUEST,
+        'Your OTP has expired. Please request a new one.',
+      );
+    }
+
     const match = await bcrypt.compare(attemptPass, user.password);
     if (!match) {
       await this.passwordsDoNotMatch(user);
       throw new NotFoundException('Wrong email or password.');
     }
+
+    if (user.otpExpiresAt) {
+      user.otpExpiresAt = undefined;
+      await user.save();
+    }
+
     return match;
   }
 

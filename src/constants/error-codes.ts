@@ -33,6 +33,8 @@ export enum ErrorCode {
   USER_INVALID_CREDENTIALS = 'USER_INVALID_CREDENTIALS',
   PROFILE_INCOMPLETE = 'PROFILE_INCOMPLETE',
 
+  OTP_EXPIRED = 'OTP_EXPIRED',
+
   // ============================================
   // PASSWORD RESET
   // ============================================
