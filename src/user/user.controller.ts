@@ -190,7 +190,7 @@ export class UserController {
   ): Promise<any> {
     try {
       const user = req.user;
-      if (verifyDto.referral1 && verifyDto.referral2) {
+      if (verifyDto.referral1) {
         await this.userService.verifyWithReferrals(
           user._id.toString(),
           verifyDto,

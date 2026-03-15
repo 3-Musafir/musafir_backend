@@ -235,36 +235,27 @@ export class UserService {
     };
   }
 
-  private ensureReferralPairValid(
+  private ensureReferralCodeValid(
     applicant: UserDocument,
     referral1?: string,
-    referral2?: string,
   ) {
-    if (!referral1 || !referral2) {
+    if (!referral1) {
       throw new AppException(
         ErrorCode.REFERRAL_CODES_REQUIRED,
-        'Two referral codes are required.',
+        'A referral code is required.',
         HttpStatus.BAD_REQUEST,
-        'Please provide two referral codes from verified Musafirs to complete verification.',
-      );
-    }
-    if (referral1 === referral2) {
-      throw new AppException(
-        ErrorCode.REFERRAL_CODES_MUST_DIFFER,
-        'Referral codes must be different.',
-        HttpStatus.BAD_REQUEST,
-        'Both referral codes must be from different people. Please use codes from two different verified Musafirs.',
+        'Please provide a referral code from a female Musafir to complete verification.',
       );
     }
     if (
       applicant.referralID &&
-      (applicant.referralID === referral1 || applicant.referralID === referral2)
+      applicant.referralID === referral1
     ) {
       throw new AppException(
         ErrorCode.REFERRAL_CANNOT_USE_OWN,
         'You cannot use your own referral code.',
         HttpStatus.BAD_REQUEST,
-        'You cannot use your own referral code for verification. Please ask other verified Musafirs for their codes.',
+        'You cannot use your own referral code for verification. Please ask a verified female Musafir for their code.',
       );
     }
   }
@@ -752,50 +743,35 @@ export class UserService {
       );
     }
 
-    const { referral1, referral2 } = verifyUser;
-    this.ensureReferralPairValid(applicant, referral1, referral2);
+    const { referral1 } = verifyUser;
+    this.ensureReferralCodeValid(applicant, referral1);
 
-    const [user1, user2] = await Promise.all([
-      this.resolveVerifiedReferrer(referral1),
-      this.resolveVerifiedReferrer(referral2),
-    ]);
+    const referrer = await this.resolveVerifiedReferrer(referral1);
 
-    if (!user1 || !user2) {
+    if (!referrer) {
       throw new AppException(
         ErrorCode.REFERRAL_USER_NOT_VERIFIED,
-        'Referral codes must belong to verified users.',
+        'Referral code must belong to a verified user.',
         HttpStatus.BAD_REQUEST,
-        'Invalid referral codes. Please ask verified Musafirs for their codes.',
+        'Invalid referral code. Please ask a verified female Musafir for their code.',
       );
     }
 
-    if (user1._id.equals(user2._id)) {
-      throw new AppException(
-        ErrorCode.REFERRAL_SAME_USER,
-        'Referral codes must come from two different users.',
-        HttpStatus.BAD_REQUEST,
-        'Both referral codes belong to the same person. Please use codes from two different verified Musafirs.',
-      );
-    }
-
-    if (user1._id.equals(applicant._id) || user2._id.equals(applicant._id)) {
+    if (referrer._id.equals(applicant._id)) {
       throw new AppException(
         ErrorCode.REFERRAL_CANNOT_VERIFY_SELF,
         'You cannot verify yourself.',
         HttpStatus.BAD_REQUEST,
-        'You cannot use your own account to verify yourself. Please ask other verified Musafirs for their codes.',
+        'You cannot use your own account to verify yourself. Please ask a verified female Musafir for their code.',
       );
     }
 
-    const genders = [user1.gender, user2.gender];
-    const hasMale = genders.includes('male');
-    const hasFemale = genders.includes('female');
-    if (!hasMale || !hasFemale) {
+    if (referrer.gender !== 'female') {
       throw new AppException(
         ErrorCode.REFERRAL_GENDER_REQUIREMENT,
-        'Referral codes must include at least one male and one female verified Musafir.',
+        'Referral code must be from a female verified Musafir.',
         HttpStatus.BAD_REQUEST,
-        'For verification, you need referral codes from at least one male and one female verified Musafir.',
+        'For verification, you need a referral code from a verified female Musafir.',
       );
     }
 
@@ -805,10 +781,10 @@ export class UserService {
       source: 'referral',
     });
 
-    // Notify referrers their code was used successfully
-    const referrerIds = [user1._id?.toString(), user2._id?.toString()].filter(Boolean) as string[];
-    if (referrerIds.length > 0) {
-      await this.notificationService.createForUsers(referrerIds, {
+    // Notify referrer their code was used successfully
+    const referrerId = referrer._id?.toString();
+    if (referrerId) {
+      await this.notificationService.createForUsers([referrerId], {
         title: 'Your referral verified a Musafir',
         message: `${applicant.fullName || 'A Musafir'} has been verified using your referral code${verifyUser.flagshipId ? ` for flagship ${verifyUser.flagshipId}` : ''}.`,
         type: 'referral',
@@ -921,10 +897,10 @@ export class UserService {
     options?: { method?: string; flagshipId?: string; source?: string },
   ) {
     const user = await this.userModel.findById(id);
-    if (verifyUser.referral1 && verifyUser.referral2) {
+    if (verifyUser.referral1) {
       user.verification.ReferralIDs = [
         verifyUser.referral1,
-        verifyUser.referral2,
+        ...(verifyUser.referral2 ? [verifyUser.referral2] : []),
       ];
     }
     const method = options?.method || user?.verification?.method || 'admin';
