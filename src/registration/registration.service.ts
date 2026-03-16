@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -49,6 +50,8 @@ interface LinkConflict {
 
 @Injectable()
 export class RegistrationService {
+  private readonly logger = new Logger(RegistrationService.name);
+
   constructor(
     @InjectModel('Registration') private readonly registrationModel: Model<Registration>,
     @InjectModel('User') private readonly userModel: Model<User>,
@@ -173,7 +176,7 @@ export class RegistrationService {
         actionLabel,
       });
     } catch (error) {
-      console.error('Failed to send contact email:', error);
+      this.logger.error('Failed to send contact email', error?.stack || error);
     }
   }
 
@@ -192,7 +195,7 @@ export class RegistrationService {
         metadata,
       });
     } catch (error) {
-      console.error('Failed to send in-app contact notification:', error);
+      this.logger.error('Failed to send in-app contact notification', error?.stack || error);
     }
   }
 
@@ -449,7 +452,7 @@ export class RegistrationService {
               },
             });
           } catch (error) {
-            console.error('Failed to send inbound group conflict notification:', error);
+            this.logger.error('Failed to send inbound group conflict notification', error?.stack || error);
           }
         }
         continue;
@@ -957,7 +960,7 @@ export class RegistrationService {
           });
         }
       } catch (error) {
-        console.log('Failed to notify waitlisted user:', error);
+        this.logger.error('Failed to notify waitlisted user', error?.stack || error);
       }
 
       return true;
@@ -1232,6 +1235,7 @@ export class RegistrationService {
   }
 
   async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<CreateRegistrationResult> {
+    this.logger.log(`Creating registration: userId=${userId}, flagshipId=${(registration as any)?.flagshipId || (registration as any)?.flagship}, tripType=${(registration as any)?.tripType}`);
     try {
       const user = await this.userModel.findById(userId);
       if (!user) {
@@ -1410,7 +1414,7 @@ export class RegistrationService {
             self.findIndex((item) => item.email === conflict.email) === index,
         );
       } catch (error) {
-        console.error('Failed to process registration links:', error);
+        this.logger.error('Failed to process registration links', error?.stack || error);
       }
 
       
@@ -1449,7 +1453,7 @@ export class RegistrationService {
           category: regFlagship?.category,
         });
       } catch (e) {
-        console.log('Failed to send admin registration notification:', e);
+        this.logger.error('Failed to send admin registration notification', e?.stack || e);
       }
 
       const message = linkConflicts.length
@@ -1468,7 +1472,7 @@ export class RegistrationService {
             },
           });
         } catch (error) {
-          console.error('Failed to send group link conflict notification:', error);
+          this.logger.error('Failed to send group link conflict notification', error?.stack || error);
         }
       }
 
@@ -1478,7 +1482,7 @@ export class RegistrationService {
         linkConflicts: linkConflicts.length ? linkConflicts : undefined,
       };
     } catch (error) {
-      console.error('Registration error:', error);
+      this.logger.error('Registration error', error?.stack || error);
       throw error;
     }
   }
@@ -1661,6 +1665,7 @@ export class RegistrationService {
   }
 
   async cancelSeat(registrationId: string, user: User) {
+    this.logger.log(`Cancelling seat: registrationId=${registrationId}, userId=${user?._id}`);
     const userId = user?._id?.toString();
     if (!userId) {
       throw new BadRequestException({
@@ -1757,7 +1762,7 @@ export class RegistrationService {
         );
       }
     } catch (e) {
-      console.log('Failed to send cancellation comms:', e);
+      this.logger.error('Failed to send cancellation comms', e?.stack || e);
     }
 
     return updated;
@@ -1839,10 +1844,7 @@ export class RegistrationService {
       try {
         await this.promoteWaitlistForFlagship(flagshipId);
       } catch (error) {
-        console.error(
-          'Failed to promote waitlist after admin deleted registration:',
-          error,
-        );
+        this.logger.error('Failed to promote waitlist after admin deleted registration', error?.stack || error);
       }
     }
 
@@ -1870,7 +1872,7 @@ export class RegistrationService {
           },
         });
       } catch (err) {
-        console.error('Failed to notify user about registration deletion:', err);
+        this.logger.error('Failed to notify user about registration deletion', err?.stack || err);
       }
     }
 
@@ -1893,7 +1895,7 @@ export class RegistrationService {
           },
         );
       } catch (error) {
-        console.error('Failed to send registration deletion email:', error);
+        this.logger.error('Failed to send registration deletion email', error?.stack || error);
       }
     }
 

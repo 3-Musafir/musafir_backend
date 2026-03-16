@@ -1,8 +1,7 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { warn } from 'console';
 import * as dotenv from 'dotenv';
 import 'dotenv/config';
 import 'module-alias/register';
@@ -69,6 +68,6 @@ async function bootstrap() {
   // Port
   const PORT = process.env.PORT;
   await app.listen(PORT);
-  warn(`APP IS LISTENING TO PORT ${PORT}`);
+  new Logger('Bootstrap').log(`Application is listening on port ${PORT}`);
 }
 bootstrap();

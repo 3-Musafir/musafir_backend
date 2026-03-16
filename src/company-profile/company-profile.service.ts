@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -16,6 +17,8 @@ import {
 
 @Injectable()
 export class CompanyProfileService {
+  private readonly logger = new Logger(CompanyProfileService.name);
+
   constructor(
     @InjectModel('CompanyProfile')
     private readonly companyProfileModel: Model<CompanyProfileDocument>,
@@ -93,7 +96,7 @@ export class CompanyProfileService {
       try {
         await this.storageService.deleteFile(existingProfile.logoKey);
       } catch (error) {
-        console.warn('Failed to delete old logo key', error);
+        this.logger.warn(`Failed to delete old logo key: ${error?.message || error}`);
       }
     }
 

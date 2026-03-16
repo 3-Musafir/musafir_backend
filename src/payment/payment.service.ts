@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import mongoose, { Connection, Model, Types } from 'mongoose';
 import { BankAccount, Payment } from './interface/payment.interface';
@@ -34,6 +34,8 @@ import { computeSettlementStatus } from 'src/registration/settlement-status.util
 
 @Injectable()
 export class PaymentService {
+  private readonly logger = new Logger(PaymentService.name);
+
   private computePartialDue(amountDue: number): number {
     return Math.max(0, Math.floor(amountDue * 0.3));
   }
@@ -1162,6 +1164,7 @@ export class PaymentService {
   }
 
   async requestRefund(requestRefundDto: RequestRefundDto, requester: User): Promise<Refund> {
+    this.logger.log(`Refund requested: registrationId=${requestRefundDto.registration}, userId=${requester?._id}`);
     if (!requester?._id) {
       throw new BadRequestException({
         message: 'Authentication required.',
@@ -1327,7 +1330,7 @@ export class PaymentService {
           { $set: { refundStatus: previousStatus } },
         );
       } catch (rollbackError) {
-        console.log('Failed to rollback registration status after refund save failure:', rollbackError);
+        this.logger.error('Failed to rollback registration status after refund save failure', rollbackError?.stack || rollbackError);
       }
       throw error;
     }
@@ -1374,7 +1377,7 @@ export class PaymentService {
         );
       }
     } catch (e) {
-      console.log('Failed to send refund requested comms:', e);
+      this.logger.error('Failed to send refund requested comms', e?.stack || e);
     }
 
     return savedRefund;
@@ -1521,7 +1524,7 @@ export class PaymentService {
 
       return calculatedDiscount;
     } catch (error) {
-      console.error('Error calculating user discount:', error);
+      this.logger.error(`Error calculating user discount for userId=${userId}`, error?.stack || error);
       return 0;
     }
   }
@@ -1541,7 +1544,7 @@ export class PaymentService {
       const userId = (registration.user as any)._id || registration.userId;
       return await this.calculateUserDiscount(userId);
     } catch (error) {
-      console.error('Error getting user discount by registration ID:', error);
+      this.logger.error(`Error getting user discount by registrationId=${registrationId}`, error?.stack || error);
       return 0;
     }
   }
@@ -1941,7 +1944,7 @@ export class PaymentService {
           },
         });
       } catch (error) {
-        console.log('Failed to send payment submitted notification:', error);
+        this.logger.error('Failed to send payment submitted notification', error?.stack || error);
       }
       if (registrationUser?.email) {
         try {
@@ -1955,7 +1958,7 @@ export class PaymentService {
             typeof remainingDue === 'number' ? remainingDue : undefined,
           );
         } catch (error) {
-          console.log('Failed to send payment submission email:', error);
+          this.logger.error('Failed to send payment submission email', error?.stack || error);
         }
       }
     };
@@ -1982,7 +1985,7 @@ export class PaymentService {
           resubmissionCount: paymentDoc.resubmissionCount,
         });
       } catch (error) {
-        console.log('Failed to send admin payment reupload email:', error);
+        this.logger.error('Failed to send admin payment reupload email', error?.stack || error);
       }
     };
 
@@ -2200,6 +2203,8 @@ export class PaymentService {
     // Use computed/legacy discount value
     const discount = requestedDiscount || 0;
 
+    this.logger.log(`Creating payment: registrationId=${createPaymentDto.registration}, method=${paymentMethod}, amount=${manualAmount}, walletToApply=${walletToApply}, discount=${requestedDiscount}, isReupload=${isReupload}`);
+
     const paymentData = {
       ...createPaymentDto,
       bankAccount: manualAmount > 0 ? bankAccountId || undefined : undefined,
@@ -2294,7 +2299,7 @@ export class PaymentService {
         try {
           await this.paymentModel.deleteOne({ _id: savedPayment._id });
         } catch (e) {
-          console.log('Failed to delete payment after error:', e);
+          this.logger.error(`Failed to delete payment id=${savedPayment._id} after error`, e?.stack || e);
         }
       }
 
@@ -2613,6 +2618,7 @@ export class PaymentService {
   }
 
   async approvePayment(id: string, admin?: User): Promise<Payment> {
+    this.logger.log(`Approving payment id=${id}, adminId=${admin?._id}`);
     const payment = await this.paymentModel.findById(id);
     if (!payment) {
       throw new BadRequestException('Payment not found');
@@ -2984,7 +2990,7 @@ export class PaymentService {
                       },
                     });
                   } catch (error) {
-                    console.log('Failed to notify user about waitlist move:', error);
+                    this.logger.error('Failed to notify user about waitlist move', error?.stack || error);
                   }
                 }
                 throw new BadRequestException({
@@ -3065,7 +3071,7 @@ export class PaymentService {
             payment.walletDebitId = '';
             await payment.save();
           } catch (e) {
-            console.log('Failed to rollback wallet debit after approval error:', e);
+            this.logger.error('Failed to rollback wallet debit after approval error', e?.stack || e);
           }
         } else if (shouldVoidApplied) {
           try {
@@ -3078,7 +3084,7 @@ export class PaymentService {
             payment.walletDebitId = '';
             await payment.save();
           } catch (e) {
-            console.log('Failed to rollback applied wallet debit after approval error:', e);
+            this.logger.error('Failed to rollback applied wallet debit after approval error', e?.stack || e);
           }
         }
         throw err;
@@ -3136,7 +3142,7 @@ export class PaymentService {
               },
             });
           } catch (error) {
-            console.log('Failed to create payment approved notification:', error);
+            this.logger.error('Failed to create payment approved notification', error?.stack || error);
           }
         }
 
@@ -3155,12 +3161,12 @@ export class PaymentService {
               },
             );
           } catch (error) {
-            console.log('Failed to send payment approved email:', error);
+            this.logger.error('Failed to send payment approved email', error?.stack || error);
           }
         }
       }
     } catch (error) {
-      console.log('Failed to load payment data for approved payment notifications:', error);
+      this.logger.error('Failed to load payment data for approved payment notifications', error?.stack || error);
       // Don't throw error - notification/email failure shouldn't prevent payment approval
     }
 
@@ -3177,6 +3183,7 @@ export class PaymentService {
       requireActive?: boolean;
     },
   ): Promise<Payment> {
+    this.logger.log(`Rejecting payment id=${id}, code=${options.rejectionCode}, adminId=${options.admin?._id}`);
     const reason = await this.resolveRejectionReason(options.rejectionCode, {
       requireActive: options.requireActive,
     });
@@ -3227,7 +3234,7 @@ export class PaymentService {
           $set: { rejectionInternalNote: combinedNote },
         });
         (payment as any).rejectionInternalNote = combinedNote;
-        console.log('Failed to void wallet debit after rejection:', error);
+        this.logger.error(`Failed to void wallet debit after rejection for paymentId=${id}`, error?.stack || error);
       }
     }
 
@@ -3265,7 +3272,7 @@ export class PaymentService {
           await this.releaseDiscountForRegistration(registration);
         }
       } catch (error) {
-        console.log('Failed to release discount after payment rejection:', error);
+        this.logger.error(`Failed to release discount after payment rejection for paymentId=${id}`, error?.stack || error);
       }
 
       try {
@@ -3294,7 +3301,7 @@ export class PaymentService {
           );
         }
       } catch (error) {
-        console.log('Failed to snapshot remaining due after rejection:', error);
+        this.logger.error('Failed to snapshot remaining due after rejection', error?.stack || error);
       }
 
       // Notify user about rejection (in-app always, email when available).
@@ -3358,7 +3365,7 @@ export class PaymentService {
                 },
               });
             } catch (error) {
-              console.log('Failed to create payment rejected notification:', error);
+              this.logger.error('Failed to create payment rejected notification', error?.stack || error);
             }
           }
 
@@ -3385,15 +3392,12 @@ export class PaymentService {
                   : undefined,
               );
             } catch (error) {
-              console.log('Failed to send payment rejected email:', error);
+              this.logger.error('Failed to send payment rejected email', error?.stack || error);
             }
           }
         }
       } catch (error) {
-        console.log(
-          'Failed to load payment data for rejected payment notifications:',
-          error,
-        );
+        this.logger.error('Failed to load payment data for rejected payment notifications', error?.stack || error);
       }
     }
 
@@ -3452,6 +3456,7 @@ export class PaymentService {
   ): Promise<Refund> {
     const credit = options?.credit !== false;
     const adminId = options?.admin?._id?.toString();
+    this.logger.log(`Approving refund id=${id}, credit=${credit}, adminId=${adminId}`);
 
     const refundDoc: any = await this.refundModel.findById(id).exec();
     if (!refundDoc) {
@@ -3541,7 +3546,7 @@ export class PaymentService {
               postedBy: adminId,
             });
           } catch (error) {
-            console.log('Failed to post refund credit:', error);
+            this.logger.error(`Failed to post refund credit for refundId=${id}`, error?.stack || error);
             throw new BadRequestException({
               message: 'Refund approved, but wallet credit failed. Retry posting credit.',
               code: 'refund_credit_failed',
@@ -3631,7 +3636,7 @@ export class PaymentService {
           }
         }
       } catch (error) {
-        console.log('Failed to send refund approved comms:', error);
+        this.logger.error('Failed to send refund approved comms', error?.stack || error);
       }
     }
 
@@ -3766,7 +3771,7 @@ export class PaymentService {
         );
       }
     } catch (error) {
-      console.log('Failed to send refund credited notification:', error);
+      this.logger.error('Failed to send refund credited notification', error?.stack || error);
     }
 
     return { status: 'posted', refundId, amount };
@@ -3888,13 +3893,14 @@ export class PaymentService {
         );
       }
     } catch (error) {
-      console.log('Failed to send refund bank processed notification:', error);
+      this.logger.error('Failed to send refund bank processed notification', error?.stack || error);
     }
 
     return { status: 'posted', refundId, amount };
   }
 
   async rejectRefund(id: string, payload: RejectRefundDto, admin?: User): Promise<Refund> {
+    this.logger.log(`Rejecting refund id=${id}, code=${payload?.rejectionCode}, adminId=${admin?._id}`);
     if (!payload?.rejectionCode) {
       throw new BadRequestException('Rejection code is required.');
     }
@@ -4016,7 +4022,7 @@ export class PaymentService {
               },
             });
         } catch (error) {
-          console.log('Failed to send refund rejected notification:', error);
+          this.logger.error('Failed to send refund rejected notification', error?.stack || error);
         }
 
         try {
@@ -4044,7 +4050,7 @@ export class PaymentService {
             );
           }
         } catch (error) {
-          console.log('Failed to send refund rejected email:', error);
+          this.logger.error('Failed to send refund rejected email', error?.stack || error);
         }
       }
     }

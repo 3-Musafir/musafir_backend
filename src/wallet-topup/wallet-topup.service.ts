@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MailService } from 'src/mail/mail.service';
@@ -10,6 +10,8 @@ import { TopupRequest } from './interfaces/topup.interface';
 
 @Injectable()
 export class WalletTopupService {
+  private readonly logger = new Logger(WalletTopupService.name);
+
   constructor(
     @InjectModel('TopupRequest')
     private readonly topupRequestModel: Model<TopupRequest>,
@@ -21,6 +23,7 @@ export class WalletTopupService {
   ) {}
 
   async createTopupRequest(user: User, packageAmount: number) {
+    this.logger.log(`Topup request created: userId=${user?._id}, amount=${packageAmount}`);
     const userId = user?._id?.toString();
     if (!userId) {
       throw new BadRequestException({
@@ -109,6 +112,7 @@ export class WalletTopupService {
   }
 
   async markCredited(id: string, admin: User) {
+    this.logger.log(`Marking topup as credited: topupId=${id}, adminId=${admin?._id}`);
     const adminId = admin?._id?.toString();
     if (!adminId) {
       throw new BadRequestException({
@@ -174,13 +178,14 @@ export class WalletTopupService {
         );
       }
     } catch (e) {
-      console.log('Failed to send top-up credited comms:', e);
+      this.logger.error(`Failed to send top-up credited comms for topupId=${id}`, e?.stack || e);
     }
 
     return request.toObject();
   }
 
   async rejectTopup(id: string, admin: User, reason?: string) {
+    this.logger.log(`Rejecting topup: topupId=${id}, adminId=${admin?._id}, reason=${reason}`);
     const adminId = admin?._id?.toString();
     if (!adminId) {
       throw new BadRequestException({
@@ -220,7 +225,7 @@ export class WalletTopupService {
         metadata: { topupRequestId: String(request._id) },
       });
     } catch (e) {
-      console.log('Failed to send top-up rejected notification:', e);
+      this.logger.error(`Failed to send top-up rejected notification for topupId=${id}`, e?.stack || e);
     }
 
     return request.toObject();

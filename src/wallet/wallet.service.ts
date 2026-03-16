@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WalletBalance, WalletTransaction } from './interfaces/wallet.interface';
@@ -28,6 +28,8 @@ function markWalletTxIdempotent<T>(tx: T): T {
 
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+
   constructor(
     @InjectModel('WalletBalance')
     private readonly walletBalanceModel: Model<WalletBalance>,
@@ -102,6 +104,7 @@ export class WalletService {
     note?: string;
     metadata?: Record<string, any>;
   }) {
+    this.logger.log(`Wallet credit: userId=${params.userId}, amount=${params.amount}, type=${params.type}, sourceId=${params.sourceId}`);
     return this.applyTransaction({ ...params, direction: 'credit' as const });
   }
 
@@ -115,6 +118,7 @@ export class WalletService {
     note?: string;
     metadata?: Record<string, any>;
   }) {
+    this.logger.log(`Wallet debit: userId=${params.userId}, amount=${params.amount}, type=${params.type}, sourceId=${params.sourceId}`);
     return this.applyTransaction({ ...params, direction: 'debit' as const });
   }
 
@@ -124,6 +128,7 @@ export class WalletService {
     voidedBy?: string;
     note?: string;
   }) {
+    this.logger.log(`Wallet void: type=${params.type}, sourceId=${params.sourceId}, voidedBy=${params.voidedBy}`);
     const tx: any = await this.walletTransactionModel
       .findOne({ type: params.type, 'metadata.sourceId': params.sourceId })
       .exec();
@@ -205,12 +210,14 @@ export class WalletService {
       .exec();
     if (existing) {
       if ((existing as any)?.status === 'void') {
+        this.logger.warn(`Wallet transaction already voided: type=${params.type}, sourceId=${params.sourceId}`);
         throw new BadRequestException({
           message:
             'This wallet operation was already processed and voided. Please retry with a new idempotency id.',
           code: 'wallet_tx_void',
         });
       }
+      this.logger.log(`Wallet transaction idempotent hit: type=${params.type}, sourceId=${params.sourceId}`);
       return markWalletTxIdempotent(existing);
     }
 
@@ -270,6 +277,7 @@ export class WalletService {
       // If we raced with an identical transaction, roll back our balance delta and return existing.
       const isDup = err?.code === 11000;
       if (isDup) {
+        this.logger.warn(`Wallet transaction race detected (duplicate key): userId=${params.userId}, type=${params.type}, sourceId=${params.sourceId}`);
         await this.walletBalanceModel.updateOne(
           { userId: params.userId },
           { $inc: { balance: -delta }, $set: { updatedAt: new Date() } },
@@ -281,6 +289,7 @@ export class WalletService {
         if (raced) return markWalletTxIdempotent(raced);
       }
       // Roll back on unexpected errors too.
+      this.logger.error(`Wallet transaction failed, rolling back balance: userId=${params.userId}, type=${params.type}`, err?.stack || err);
       await this.walletBalanceModel.updateOne(
         { userId: params.userId },
         { $inc: { balance: -delta }, $set: { updatedAt: new Date() } },

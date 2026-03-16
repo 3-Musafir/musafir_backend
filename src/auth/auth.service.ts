@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -17,6 +18,7 @@ import { RefreshToken } from './interfaces/refresh-token.interface';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   cryptr: any;
   private static readonly REFRESH_TOKEN_TTL_DAYS = 30;
 
@@ -36,6 +38,7 @@ export class AuthService {
   }
 
   async createRefreshToken(req: Request, userId) {
+    this.logger.log(`Creating refresh token for userId=${userId}, ip=${this.getIp(req)}`);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + AuthService.REFRESH_TOKEN_TTL_DAYS);
     const refreshToken = new this.refreshTokenModel({
@@ -55,12 +58,14 @@ export class AuthService {
       expiresAt: { $gt: new Date() },
     });
     if (!refreshToken) {
+      this.logger.warn(`Refresh token not found or expired: token=${token.substring(0, 8)}...`);
       throw new UnauthorizedException('User has been logged out.');
     }
     return refreshToken.userId;
   }
 
   async revokeAllUserTokens(userId: string) {
+    this.logger.log(`Revoking all refresh tokens for userId=${userId}`);
     await this.refreshTokenModel.deleteMany({ userId });
   }
 
@@ -69,9 +74,10 @@ export class AuthService {
       _id: jwtPayload.userId,
     });
     if (!user) {
+      this.logger.warn(`JWT validation failed: user not found for userId=${jwtPayload.userId}`);
       throw new UnauthorizedException('User not found.');
     }
-    return user; 
+    return user;
   }
 
   public async varifyToken(token: string) {
@@ -88,6 +94,7 @@ export class AuthService {
       if (!findUser) return errorResponse({statusCode: 401, message: `User not found`});
       return successResponse(findUser,'User Found');
     } catch (e) {
+      this.logger.error(`Token verification failed: ${e.message}`, e?.stack);
       return errorResponse({statusCode: 401, message: e.message });
     }
   }
@@ -115,6 +122,7 @@ export class AuthService {
         const decrypted = cryptr.decrypt(token);
         token = decrypted;
       } catch (err) {
+        this.logger.warn('Failed to decrypt JWT token from request');
         throw new BadRequestException('Bad request.');
       }
     }

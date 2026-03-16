@@ -95,7 +95,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log(error);
+      this.logger.error('Failed to send email verification', error?.stack || error);
       return error;
     }
   }
@@ -187,7 +187,7 @@ export class MailService {
         },
       );
     } catch (error) {
-      console.log(error);
+      this.logger.error('Failed to send account created email', error?.stack || error);
       return error;
     }
   }
@@ -209,7 +209,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending verification approved email:', error);
+      this.logger.error('Error sending verification approved email', error?.stack || error);
       return error;
     }
   }
@@ -239,7 +239,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending payment submission email:', error);
+      this.logger.error('Error sending payment submission email', error?.stack || error);
       return error;
     }
   }
@@ -268,7 +268,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending payment reminder email:', error);
+      this.logger.error('Error sending payment reminder email', error?.stack || error);
       return error;
     }
   }
@@ -290,7 +290,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending verification rejected email:', error);
+      this.logger.error('Error sending verification rejected email', error?.stack || error);
       return error;
     }
   }
@@ -323,7 +323,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending payment approved email:', error);
+      this.logger.error('Error sending payment approved email', error?.stack || error);
       return error;
     }
   }
@@ -351,7 +351,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending payment rejected email:', error);
+      this.logger.error('Error sending payment rejected email', error?.stack || error);
       return error;
     }
   }
@@ -380,7 +380,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending admin verification reapply notification:', error);
+      this.logger.error('Error sending admin verification reapply notification', error?.stack || error);
       return error;
     }
   }
@@ -412,7 +412,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending admin payment reupload notification:', error);
+      this.logger.error('Error sending admin payment reupload notification', error?.stack || error);
       return error;
     }
   }
@@ -445,7 +445,7 @@ export class MailService {
         d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined;
 
       if (!process.env.MUSAFIR_MAIL) {
-        console.warn('Skipping admin registration email: MUSAFIR_MAIL is not configured.');
+        this.logger.warn('Skipping admin registration email: MUSAFIR_MAIL is not configured');
         return true;
       }
 
@@ -463,7 +463,7 @@ export class MailService {
       );
       return true;
     } catch (error) {
-      console.log('Error sending admin registration notification:', error);
+      this.logger.error('Error sending admin registration notification', error?.stack || error);
       return error;
     }
   }
@@ -485,7 +485,7 @@ export class MailService {
       });
       return true;
     } catch (error) {
-      console.log('Error sending trip link notification email:', error);
+      this.logger.error('Error sending trip link notification email', error?.stack || error);
       return error;
     }
   }

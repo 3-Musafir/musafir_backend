@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Notification } from './interfaces/notification.interface';
@@ -25,6 +25,7 @@ interface ListQuery {
 
 @Injectable()
 export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
   private readonly profileReminderKind = 'profile_completion';
   private readonly verificationStatusKind = 'verification_status';
 
@@ -36,6 +37,7 @@ export class NotificationService {
 
   async createForUsers(userIds: string[], payload: CreateNotificationPayload) {
     if (!userIds || userIds.length === 0) return [];
+    this.logger.log(`Creating bulk notifications: type=${payload.type || 'general'}, recipientCount=${userIds.length}, title="${payload.title}"`);
 
     const docs = userIds.map((userId) => ({
       userId,
@@ -57,6 +59,7 @@ export class NotificationService {
   }
 
   async createForUser(userId: string, payload: CreateNotificationPayload) {
+    this.logger.log(`Creating notification: userId=${userId}, type=${payload.type || 'general'}, title="${payload.title}"`);
     const created = new this.notificationModel({
       userId,
       title: payload.title,

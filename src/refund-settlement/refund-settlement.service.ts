@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import mongoose, { Model } from 'mongoose';
 import { PK_TIMEZONE } from 'src/wallet/wallet.constants';
@@ -13,6 +13,8 @@ dayjs.extend(timezone);
 
 @Injectable()
 export class RefundSettlementService {
+  private readonly logger = new Logger(RefundSettlementService.name);
+
   constructor(
     @InjectModel('RefundSettlement')
     private readonly settlementModel: Model<RefundSettlement>,
@@ -36,6 +38,7 @@ export class RefundSettlementService {
     postedAt?: Date;
     metadata?: Record<string, any>;
   }) {
+    this.logger.log(`Ensuring settlement: refundId=${params.refundId}, userId=${params.userId}, amount=${params.amount}, method=${params.method || 'wallet_credit'}, status=${params.status}`);
     const amount = Math.max(0, Math.floor(Number(params.amount) || 0));
     const refundObjectId = new mongoose.Types.ObjectId(params.refundId);
     const method = params.method || 'wallet_credit';
@@ -63,6 +66,7 @@ export class RefundSettlementService {
   }
 
   async postToWallet(params: { refundId: string; userId: string; amount: number; postedBy?: string }) {
+    this.logger.log(`Posting refund to wallet: refundId=${params.refundId}, userId=${params.userId}, amount=${params.amount}`);
     const amount = Math.max(0, Math.floor(Number(params.amount) || 0));
     if (amount <= 0) {
       throw new BadRequestException({

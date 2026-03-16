@@ -309,7 +309,16 @@ export class UserController {
   @ApiOperation({ summary: 'Get Verified Users' })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({})
-  VerifiedUsers(@Query('search') search?: string) {
+  VerifiedUsers(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    if (pageNum && limitNum) {
+      return this.userService.verifiedUsersPaginated(search, pageNum, limitNum);
+    }
     return this.userService.verifiedUsers(search);
   }
 

@@ -3,6 +3,7 @@ import {
   ConflictException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -42,6 +43,7 @@ import { WalletService } from 'src/wallet/wallet.service';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
   HOURS_TO_BLOCK = 6;
   LOGIN_ATTEMPTS_TO_BLOCK = 5;
 
@@ -84,7 +86,7 @@ export class UserService {
         },
       });
     } catch (err) {
-      console.log('Failed to credit signup referral bonus:', err);
+      this.logger.error(`Failed to credit signup referral bonus for referrerId=${referrerId}`, err?.stack || err);
     }
   }
 
@@ -136,7 +138,7 @@ export class UserService {
         }),
       );
     } catch (err) {
-      console.log('Failed to credit verification referral bonuses:', err);
+      this.logger.error('Failed to credit verification referral bonuses', err?.stack || err);
     }
   }
 
@@ -282,7 +284,7 @@ export class UserService {
       }
     } catch (err) {
       // swallow attribution errors; should not block signup
-      console.warn('Referral attribution failed', err);
+      this.logger.warn(`Referral attribution failed: ${err?.message || err}`);
     }
   }
 
@@ -323,6 +325,7 @@ export class UserService {
   async create(
     createUserDto: CreateUserDto,
   ): Promise<{ userId: any; verificationId: string; merged?: boolean }> {
+    this.logger.log(`User signup initiated: email=${createUserDto.email}`);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const userData = { ...createUserDto, password: otp };
     await this.isEmailUnique(userData.email);
@@ -486,8 +489,10 @@ export class UserService {
 
   // Login
   async login(req: Request, loginUserDto: LoginUserDto) {
+    this.logger.log(`Login attempt: email=${loginUserDto.email}`);
     const user = await this.findUserByEmail(loginUserDto.email);
     await this.checkPassword(loginUserDto.password, user);
+    this.logger.log(`Login successful: userId=${user._id}, email=${user.email}`);
     const userWithStatus = this.addProfileStatus(user);
     return {
       user: userWithStatus,
@@ -701,6 +706,7 @@ export class UserService {
     req: Request,
     createForgotPasswordDto: CreateForgotPasswordDto,
   ) {
+    this.logger.log(`Password reset requested: email=${createForgotPasswordDto.email}`);
     const user = await this.findByEmail(createForgotPasswordDto.email);
 
     // Generate JWT token with 15 minutes expiry
@@ -1041,7 +1047,7 @@ export class UserService {
           user.fullName || 'Musafir',
         );
       } catch (error) {
-        console.log('Failed to send verification approved email:', error);
+        this.logger.error('Failed to send verification approved email', error?.stack || error);
       }
     }
 
@@ -1054,7 +1060,7 @@ export class UserService {
         },
       );
     } catch (error) {
-      console.log('Failed to send verification status notification:', error);
+      this.logger.error('Failed to send verification status notification', error?.stack || error);
     }
   }
 
@@ -1111,7 +1117,7 @@ export class UserService {
           adminUrl,
         });
       } catch (error) {
-        console.log('Failed to send admin verification reapply email:', error);
+        this.logger.error('Failed to send admin verification reapply email', error?.stack || error);
       }
     }
 
@@ -1182,6 +1188,40 @@ export class UserService {
       .select('-password -__v')
       .lean();
     return users;
+  }
+
+  async verifiedUsersPaginated(search?: string, page = 1, limit = 100) {
+    const query: any = {
+      'verification.status': VerificationStatus.VERIFIED,
+      roles: { $ne: 'admin' },
+    };
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { fullName: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } },
+      ];
+    }
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(Math.max(1, limit), 200);
+    const skip = (safePage - 1) * safeLimit;
+    const [data, total] = await Promise.all([
+      this.userModel
+        .find(query)
+        .select('-password -__v')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit)
+        .lean(),
+      this.userModel.countDocuments(query),
+    ]);
+    return {
+      data,
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+    };
   }
 
   async pendingVerificationUsers(search?: string) {
@@ -1369,6 +1409,7 @@ export class UserService {
   }
 
   private async blockUser(user) {
+    this.logger.warn(`Blocking user due to excessive login attempts: userId=${user._id}, email=${user.email}`);
     user.blockExpires = addHours(new Date(), this.HOURS_TO_BLOCK);
     await user.save();
   }
@@ -1513,6 +1554,7 @@ export class UserService {
     comment?: string,
     options?: { registrationId?: string },
   ) {
+    this.logger.log(`Updating verification status: userId=${userId}, status=${status}`);
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -1570,7 +1612,7 @@ export class UserService {
           { paymentLink: absolutePaymentLink },
         );
       } catch (error) {
-        console.log('Failed to send verification approved email:', error);
+        this.logger.error('Failed to send verification approved email', error?.stack || error);
       }
     }
 
@@ -1595,7 +1637,7 @@ export class UserService {
         notificationOptions,
       );
     } catch (error) {
-      console.log('Failed to send verification status notification:', error);
+      this.logger.error('Failed to send verification status notification', error?.stack || error);
     }
 
     return savedUser;
@@ -1629,7 +1671,7 @@ export class UserService {
           comment,
         );
       } catch (error) {
-        console.log('Failed to send verification rejected email:', error);
+        this.logger.error('Failed to send verification rejected email', error?.stack || error);
         // Don't throw error - email failure shouldn't prevent user rejection
       }
     }
@@ -1644,7 +1686,7 @@ export class UserService {
         },
       );
     } catch (error) {
-      console.log('Failed to send verification status notification:', error);
+      this.logger.error('Failed to send verification status notification', error?.stack || error);
     }
 
     return savedUser;
@@ -1719,7 +1761,7 @@ export class UserService {
             adminUrl,
           });
         } catch (error) {
-          console.log('Failed to send admin verification reapply email:', error);
+          this.logger.error('Failed to send admin verification reapply email', error?.stack || error);
         }
       }
 

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -28,6 +29,8 @@ import { MUSAFIR_DISCOUNT_MAX } from 'src/discounts/musafir.constants';
 
 @Injectable()
 export class FlagshipService {
+  private readonly logger = new Logger(FlagshipService.name);
+
   constructor(
     @InjectModel('Flagship') private readonly flagshipModel: Model<Flagship>,
     private readonly registrationService: RegistrationService,
@@ -495,6 +498,7 @@ export class FlagshipService {
   async createFlagship(
     createFlagshipDto: CreateFlagshipDto,
   ): Promise<Flagship> {
+    this.logger.log(`Creating flagship: tripName="${createFlagshipDto.tripName}", destination="${createFlagshipDto.destination}"`);
     const startDate = new Date(createFlagshipDto.startDate);
     const endDate = new Date(createFlagshipDto.endDate);
 
@@ -654,7 +658,7 @@ export class FlagshipService {
         metadata: { flagshipId: flagship['_id'] },
       });
     } catch (error) {
-      console.log('Failed to broadcast flagship notification', error?.message || error);
+      this.logger.error('Failed to broadcast flagship notification', error?.stack || error);
     }
   }
 
@@ -674,7 +678,7 @@ export class FlagshipService {
         metadata: { flagshipId: flagship['_id'] },
       });
     } catch (error) {
-      console.log('Failed to send flagship update notifications', error?.message || error);
+      this.logger.error('Failed to send flagship update notifications', error?.stack || error);
     }
   }
 
@@ -695,6 +699,7 @@ export class FlagshipService {
     id: string,
     updateDto: UpdateFlagshipDto,
   ): Promise<Flagship> {
+    this.logger.log(`Updating flagship: id=${id}`);
     const updateData: Partial<UpdateFlagshipDto> = {};
     const silentUpdate = (() => {
       const raw = (updateDto as any)?.silentUpdate;
@@ -1356,7 +1361,7 @@ export class FlagshipService {
         result.notificationsSent += 1;
         sent = true;
       } catch (error) {
-        console.log('Failed to send payment reminder notification:', error);
+        this.logger.error('Failed to send payment reminder notification', error?.stack || error);
       }
 
       if (user?.email) {
@@ -1371,7 +1376,7 @@ export class FlagshipService {
           result.emailsSent += 1;
           sent = true;
         } catch (error) {
-          console.log('Failed to send payment reminder email:', error);
+          this.logger.error('Failed to send payment reminder email', error?.stack || error);
         }
       }
 
@@ -1902,7 +1907,7 @@ export class FlagshipService {
             return await this.storageService.getSignedUrl(imageKey);
           } catch (error) {
             // Avoid hard-failing if signing fails (e.g., missing AWS creds).
-            console.error('Failed to sign image URL', { imageKey, error });
+            this.logger.error(`Failed to sign image URL: imageKey=${imageKey}`, error?.stack || error);
             return imageKey;
           }
         }),
