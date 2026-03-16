@@ -165,9 +165,9 @@ export const FlagshipSchema = new Schema(
     citySeats: { type: Object, required: false },
     bedSeats: { type: Number, required: false },
     mattressSeats: { type: Number, required: false },
-    genderSplitEnabled: { type: Boolean, required: false, default: true },
-    citySplitEnabled: { type: Boolean, required: false, default: true },
-    mattressSplitEnabled: { type: Boolean, required: false, default: true },
+    genderSplitEnabled: { type: Boolean, required: false, default: false },
+    citySplitEnabled: { type: Boolean, required: false, default: false },
+    mattressSplitEnabled: { type: Boolean, required: false, default: false },
     mattressPriceDelta: { type: Number, required: false },
     earlyBirdPrice: { type: Number, required: false },
 

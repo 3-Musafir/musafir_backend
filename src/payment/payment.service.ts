@@ -3429,7 +3429,7 @@ export class PaymentService {
       .find({ status: 'pendingApproval' })
       .populate({
         path: 'registration',
-        populate: [{ path: 'user' }, { path: 'flagship' }],
+        populate: [{ path: 'user' }, { path: 'payment' }],
       })
       .populate('bankAccount')
       .exec();
@@ -3440,7 +3440,7 @@ export class PaymentService {
       .find({ status: 'approved' })
       .populate({
         path: 'registration',
-        populate: [{ path: 'user' }, { path: 'flagship' }],
+        populate: [{ path: 'user' }, { path: 'payment' }],
       })
       .populate('bankAccount')
       .exec();
