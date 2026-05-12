@@ -643,6 +643,12 @@ export class FlagshipService {
 
   private async notifyNewFlagship(flagship: Flagship) {
     try {
+      const isPublished = flagship.status === 'published' || flagship.publish === true;
+      const isPublic = flagship.visibility === 'public';
+      if (!isPublished || !isPublic) {
+        return;
+      }
+
       const users = await this.userModel
         .find({ roles: { $ne: 'admin' } })
         .select('_id')
@@ -895,15 +901,23 @@ export class FlagshipService {
     }
     const visibilityOnly =
       changedKeys.length > 0 && changedKeys.every((key) => key === 'visibility');
-    const nextStatus = updateData.status ?? existingFlagship.status;
-    const nextPublish = updateData.publish ?? existingFlagship.publish;
+    const nextStatus = (updateData as any).status ?? existingFlagship.status;
+    const nextPublish = (updateData as any).publish ?? existingFlagship.publish;
     const wasPublished =
       existingFlagship.status === 'published' || existingFlagship.publish === true;
     const isPublishedNow = nextStatus === 'published' || nextPublish === true;
-    const shouldNotify =
-      !silentUpdate && !visibilityOnly && changedKeys.length > 0 && (wasPublished || isPublishedNow);
-    if (shouldNotify) {
-      void this.notifyFlagshipUpdated(updatedFlagship);
+
+    const isLiveNow = isPublishedNow && updatedFlagship.visibility === 'public';
+    const wasLiveBefore = wasPublished && existingFlagship.visibility === 'public';
+
+    if (isLiveNow && !wasLiveBefore) {
+      void this.notifyNewFlagship(updatedFlagship);
+    } else {
+      const shouldNotify =
+        !silentUpdate && !visibilityOnly && changedKeys.length > 0 && (wasPublished || isPublishedNow);
+      if (shouldNotify) {
+        void this.notifyFlagshipUpdated(updatedFlagship);
+      }
     }
 
     return updatedFlagship;
