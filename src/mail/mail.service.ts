@@ -439,6 +439,8 @@ export class MailService {
     endDate?: Date | string;
     destination?: string;
     category?: string;
+    userId?: string;
+    adminUrl?: string;
   }) {
     try {
       const formatDate = (d?: Date | string) =>

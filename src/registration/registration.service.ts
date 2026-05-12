@@ -1429,6 +1429,11 @@ export class RegistrationService {
         const regUser = reg?.user;
         const regFlagship = reg?.flagship;
 
+        // ${process.env.FRONTEND_URL}/admin/user/${userId}  can be used for Direct link for admin to verify the user (NOT TRIP RELEVANT)
+        const adminUrl = process.env.FRONTEND_URL
+          ? `${process.env.FRONTEND_URL}/admin/user/${userId}?registrationId=${createdRegistration._id}`
+          : undefined;
+
         await this.mailService.sendAdminRegistrationNotification({
           registrationId: String(createdRegistration._id),
           flagshipId: String(registration.flagshipId),
@@ -1451,6 +1456,8 @@ export class RegistrationService {
           endDate: regFlagship?.endDate,
           destination: regFlagship?.destination,
           category: regFlagship?.category,
+          userId: userId,
+          adminUrl: adminUrl,
         });
       } catch (e) {
         this.logger.error('Failed to send admin registration notification', e?.stack || e);

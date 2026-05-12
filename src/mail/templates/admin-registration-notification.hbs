@@ -189,7 +189,7 @@
             </table>
 
             <!-- Payment summary chips -->
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e2e8f0; border-radius:8px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:24px;">
               <tr>
                 <td style="padding:14px 16px; border-bottom:1px solid #e2e8f0; font-weight:800; color:#0f172a; font-size:16px;">💳 Payment Summary</td>
               </tr>
@@ -209,6 +209,22 @@
                 </td>
               </tr>
             </table>
+
+            <!-- Admin CTA -->
+            {{#if adminUrl}}
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">
+              <tr>
+                <td align="center" style="padding:10px 0;">
+                  <a href="{{adminUrl}}" target="_blank" style="display:inline-block; background-color:#0f766e; color:#ffffff; font-family:sans-serif; font-size:16px; font-weight:bold; line-height:50px; text-align:center; text-decoration:none; width:220px; -webkit-text-size-adjust:none; border-radius:6px;">Review & Verify User</a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="color:#64748b; font-size:13px; padding-top:8px;">
+                  User ID: <span style="font-family:monospace;">{{userId}}</span>
+                </td>
+              </tr>
+            </table>
+            {{/if}}
 
             <!-- Footer note -->
             <div style="text-align:center; color:#94a3b8; font-size:12px; margin-top:16px;">
