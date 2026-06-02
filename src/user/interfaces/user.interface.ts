@@ -35,6 +35,13 @@ export interface VerificationSubSchema {
   history?: VerificationHistoryEntry[];
 }
 
+export interface ReviewPreferences {
+  preferredReviewIds: string[];
+  questionTags: string[];
+  personaTags: string[];
+  updatedAt?: Date;
+}
+
 export interface User {
   _id: Types.ObjectId; // or Types.ObjectId | string if you sometimes string-ify it
   legacyUserKey?: string;
@@ -62,6 +69,7 @@ export interface User {
   numberOfFlagshipsAttended?: number;
   referredBy?: Types.ObjectId;
   referredCode?: string;
+  reviewPreferences?: ReviewPreferences;
 }
 
 // When dealing with actual Mongoose documents:

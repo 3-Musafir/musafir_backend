@@ -90,6 +90,16 @@ const VerificationSchema = new Schema<VerificationSchema>({
   ],
 });
 
+const ReviewPreferencesSchema = new Schema(
+  {
+    preferredReviewIds: { type: [String], default: [] },
+    questionTags: { type: [String], default: [] },
+    personaTags: { type: [String], default: [] },
+    updatedAt: { type: Date, required: false },
+  },
+  { _id: false },
+);
+
 export const UserSchema = new Schema(
   {
     legacyUserKey: { type: String, required: false, index: true, unique: true, sparse: true },
@@ -181,6 +191,15 @@ export const UserSchema = new Schema(
     numberOfFlagshipsAttended: { type: Number, required: false, default: 0 },
     referredBy: { type: Schema.Types.ObjectId, ref: 'User', required: false },
     referredCode: { type: String, required: false },
+    reviewPreferences: {
+      type: ReviewPreferencesSchema,
+      required: false,
+      default: () => ({
+        preferredReviewIds: [],
+        questionTags: [],
+        personaTags: [],
+      }),
+    },
   },
   {
     toJSON: {

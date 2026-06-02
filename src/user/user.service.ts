@@ -23,6 +23,7 @@ import { CreateForgotPasswordDto } from './dto/create-forgot-password.dto';
 import { CreateUserDto, CreateGoogleUserDto, EmailUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshAccessTokenDto } from './dto/refresh-access-token.dto';
+import { UpdateReviewPreferencesDto } from './dto/update-review-preferences.dto';
 import {
   JwtResetPasswordDto,
   ResetPasswordDto,
@@ -40,6 +41,12 @@ import {
 } from './profile-status.util';
 import { NotificationService } from 'src/notifications/notification.service';
 import { WalletService } from 'src/wallet/wallet.service';
+import {
+  ALLOWED_REVIEW_PERSONA_TAGS,
+  ALLOWED_REVIEW_QUESTION_TAGS,
+  REVIEW_ID_PATTERN,
+  REVIEW_PREFERENCE_LIMITS,
+} from './review-preferences.constants';
 
 @Injectable()
 export class UserService {
@@ -1542,6 +1549,104 @@ export class UserService {
 
     const savedUser = await user.save();
     return merged ? { user: savedUser, merged: true } : savedUser;
+  }
+
+  private normalizeReviewPreferences(input: any = {}) {
+    return {
+      preferredReviewIds: this.uniqueCapped(
+        Array.isArray(input.preferredReviewIds)
+          ? input.preferredReviewIds.filter(
+              (value) => typeof value === 'string' && REVIEW_ID_PATTERN.test(value),
+            )
+          : [],
+        REVIEW_PREFERENCE_LIMITS.preferredReviewIds,
+      ),
+      questionTags: this.uniqueCapped(
+        this.filterAllowed(input.questionTags, ALLOWED_REVIEW_QUESTION_TAGS),
+        REVIEW_PREFERENCE_LIMITS.questionTags,
+      ),
+      personaTags: this.uniqueCapped(
+        this.filterAllowed(input.personaTags, ALLOWED_REVIEW_PERSONA_TAGS),
+        REVIEW_PREFERENCE_LIMITS.personaTags,
+      ),
+      updatedAt: input.updatedAt,
+    };
+  }
+
+  private uniqueCapped(values: string[], cap: number) {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    values.forEach((value) => {
+      if (seen.has(value)) return;
+      seen.add(value);
+      result.push(value);
+    });
+    return result.slice(0, cap);
+  }
+
+  private filterAllowed(values: string[] | undefined, allowed: readonly string[]) {
+    if (!Array.isArray(values)) return [];
+    return values.filter((value) => allowed.includes(value));
+  }
+
+  async getReviewPreferences(userId: string) {
+    const user = await this.userModel.findById(userId).select('reviewPreferences');
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.normalizeReviewPreferences((user as any).reviewPreferences);
+  }
+
+  async updateReviewPreferences(
+    userId: string,
+    updateReviewPreferencesDto: UpdateReviewPreferencesDto,
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const existing = this.normalizeReviewPreferences((user as any).reviewPreferences);
+    const incomingReviewIds = Array.isArray(updateReviewPreferencesDto.reviewIds)
+      ? updateReviewPreferencesDto.reviewIds.filter((id) => REVIEW_ID_PATTERN.test(id))
+      : [];
+    const incomingQuestionTags = this.filterAllowed(
+      updateReviewPreferencesDto.questionTags,
+      ALLOWED_REVIEW_QUESTION_TAGS,
+    );
+    const incomingPersonaTags = this.filterAllowed(
+      updateReviewPreferencesDto.personaTags,
+      ALLOWED_REVIEW_PERSONA_TAGS,
+    );
+
+    if (
+      !incomingReviewIds.length &&
+      !incomingQuestionTags.length &&
+      !incomingPersonaTags.length
+    ) {
+      return existing;
+    }
+
+    const next = {
+      preferredReviewIds: this.uniqueCapped(
+        [...incomingReviewIds, ...existing.preferredReviewIds],
+        REVIEW_PREFERENCE_LIMITS.preferredReviewIds,
+      ),
+      questionTags: this.uniqueCapped(
+        [...existing.questionTags, ...incomingQuestionTags],
+        REVIEW_PREFERENCE_LIMITS.questionTags,
+      ),
+      personaTags: this.uniqueCapped(
+        [...existing.personaTags, ...incomingPersonaTags],
+        REVIEW_PREFERENCE_LIMITS.personaTags,
+      ),
+      updatedAt: new Date(),
+    };
+
+    (user as any).reviewPreferences = next;
+    const savedUser = await user.save();
+    return this.normalizeReviewPreferences((savedUser as any).reviewPreferences);
   }
 
   async approveUser(userId: string, comment?: string) {

@@ -25,6 +25,7 @@ import { VerifyUuidDto } from './dto/verify-uuid.dto';
 import { UserService } from './user.service';
 import { RefreshAccessTokenDto } from './dto/refresh-access-token.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateReviewPreferencesDto } from './dto/update-review-preferences.dto';
 import {
   ApiCreatedResponse,
   ApiOkResponse,
@@ -286,6 +287,40 @@ export class UserController {
         ? 'Account merged successfully — your trip history has been preserved.'
         : 'User updated successfully';
       return successResponse(result, message, 200);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  @Get('me/review-preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get user review preferences' })
+  @ApiOkResponse({})
+  async getReviewPreferences(@GetUser() user: User) {
+    try {
+      const result = await this.userService.getReviewPreferences(user._id.toString());
+      return successResponse(result, 'Review preferences fetched successfully', 200);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  @Patch('me/review-preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update user review preferences' })
+  @ApiOkResponse({})
+  async updateReviewPreferences(
+    @GetUser() user: User,
+    @Body() updateReviewPreferencesDto: UpdateReviewPreferencesDto,
+  ) {
+    try {
+      const result = await this.userService.updateReviewPreferences(
+        user._id.toString(),
+        updateReviewPreferencesDto,
+      );
+      return successResponse(result, 'Review preferences updated successfully', 200);
     } catch (error) {
       return errorResponse(error);
     }
