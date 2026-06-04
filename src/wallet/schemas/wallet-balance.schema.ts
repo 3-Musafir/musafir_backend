@@ -8,7 +8,6 @@ export const WalletBalanceSchema = new Schema(
       ref: 'User',
       required: true,
       unique: true,
-      index: true,
     },
     currency: { type: String, required: true, default: WALLET_CURRENCY },
     balance: { type: Number, required: true, default: 0 },
@@ -19,6 +18,3 @@ export const WalletBalanceSchema = new Schema(
     versionKey: false,
   },
 );
-
-WalletBalanceSchema.index({ userId: 1 }, { unique: true });
-

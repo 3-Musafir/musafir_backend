@@ -13,6 +13,29 @@ import { RegistrationModule } from './registration/registration.module';
 import { UserModule } from './user/user.module';
 dotenv.config();
 
+function normalizeOrigin(origin?: string) {
+  return origin?.trim().replace(/\/$/, '');
+}
+
+function getAllowedOrigins() {
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'https://3musafir.com',
+    'https://www.3musafir.com',
+    'https://staging.3musafir.com',
+  ];
+  const configuredOrigins = [
+    process.env.FRONTEND_URL,
+    ...(process.env.CORS_ALLOWED_ORIGINS || '').split(','),
+  ];
+
+  return new Set(
+    [...defaultOrigins, ...configuredOrigins]
+      .map(normalizeOrigin)
+      .filter((origin): origin is string => Boolean(origin)),
+  );
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
@@ -37,17 +60,15 @@ async function bootstrap() {
   });
   SwaggerModule.setup('api', app, document);
 
-  const frontendUrl = process.env.FRONTEND_URL;
+  const allowedOrigins = getAllowedOrigins();
+  const logger = new Logger('Bootstrap');
 
   app.enableCors({
     origin: (origin, callback) => {
-      const allowedOrigins = [
-        'http://localhost:3000',
-        'https://staging.3musafir.com',
-        'https://www.3musafir.com',
-      ];
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
+      const normalizedOrigin = normalizeOrigin(origin);
+      if (!normalizedOrigin || !allowedOrigins.has(normalizedOrigin)) {
+        logger.warn(`Blocked CORS request from origin: ${origin}`);
         return callback(
           new Error(
             'The CORS policy for this site does not allow access from the specified Origin.',
@@ -68,6 +89,6 @@ async function bootstrap() {
   // Port
   const PORT = process.env.PORT;
   await app.listen(PORT);
-  new Logger('Bootstrap').log(`Application is listening on port ${PORT}`);
+  logger.log(`Application is listening on port ${PORT}`);
 }
 bootstrap();
