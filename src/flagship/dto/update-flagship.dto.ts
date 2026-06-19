@@ -73,6 +73,119 @@ class RoomSharingPreferenceDto {
   price: string;
 }
 
+const parseJsonArray = ({ value }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : value;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+};
+
+class VibeScoreDto {
+  @ApiProperty({ example: 'Nature and adventure', description: 'Trip fit label' })
+  @IsOptional()
+  @IsString()
+  label: string;
+
+  @ApiProperty({ example: 4, description: 'Score from 0 to 5' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  score: number;
+}
+
+class ItineraryDayDto {
+  @ApiProperty({ example: 1, description: 'Day number' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  day: number;
+
+  @ApiProperty({ example: 'Arrival and welcome dinner', description: 'Day title' })
+  @IsOptional()
+  @IsString()
+  title: string;
+
+  @ApiProperty({ example: 'Arrival, hotel check-in, and group briefing.', description: 'Day summary' })
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @ApiProperty({ example: 'flagship/123/day-1.webp', description: 'Stored day image key or signed URL' })
+  @IsOptional()
+  @IsString()
+  image?: string;
+
+  @ApiProperty({ example: 'Hunza valley arrival view', description: 'SEO image title' })
+  @IsOptional()
+  @IsString()
+  imageTitle?: string;
+
+  @ApiProperty({ example: 'Travelers arriving in Hunza valley on day one of the trip', description: 'SEO image alt text' })
+  @IsOptional()
+  @IsString()
+  imageAlt?: string;
+}
+
+class RouteWaypointDto {
+  @ApiProperty({ example: 'Islamabad', description: 'Waypoint label' })
+  @IsOptional()
+  @IsString()
+  label: string;
+
+  @ApiProperty({ example: 'Start point and briefing city.', description: 'Waypoint description' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+class DetailItemDto {
+  @ApiProperty({ example: 'Accommodation', description: 'Item label' })
+  @IsOptional()
+  @IsString()
+  label: string;
+
+  @ApiProperty({ example: 'Shared hotel rooms for the full trip.', description: 'Item details' })
+  @IsOptional()
+  @IsString()
+  detail?: string;
+
+  @ApiProperty({ example: 'bed', description: 'Optional icon key' })
+  @IsOptional()
+  @IsString()
+  icon?: string;
+}
+
+class AdditionalInfoDto {
+  @ApiProperty({ example: 'Accommodation', description: 'Information title' })
+  @IsOptional()
+  @IsString()
+  title: string;
+
+  @ApiProperty({ example: 'Hotels and guest houses, subject to route availability.', description: 'Information body' })
+  @IsOptional()
+  @IsString()
+  body: string;
+}
+
+class TripFaqDto {
+  @ApiProperty({ example: 'What should I pack?', description: 'Question' })
+  @IsOptional()
+  @IsString()
+  question: string;
+
+  @ApiProperty({ example: 'Bring layered clothing and comfortable shoes.', description: 'Answer' })
+  @IsOptional()
+  @IsString()
+  answer: string;
+}
+
 class CitySeatsDto {
   @ApiProperty({ example: 'Islamabad', description: 'City Name' })
   @IsOptional()
@@ -313,6 +426,80 @@ export class UpdateFlagshipDto {
   
   // Content
   @ApiProperty({
+    example: 'A short community-led mountain escape with soft adventure and clear logistics.',
+    description: 'Short public summary for trip cards and hero sections',
+  })
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @ApiProperty({ example: 'Mountain Escape', description: 'Human-readable trip type' })
+  @IsOptional()
+  @IsString()
+  tripType?: string;
+
+  @ApiProperty({ example: 'Moderate', description: 'Physical effort label' })
+  @IsOptional()
+  @IsString()
+  effortLevel?: string;
+
+  @ApiProperty({ type: [VibeScoreDto], description: 'Trip fit scores shown to users' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VibeScoreDto)
+  vibeScores?: VibeScoreDto[];
+
+  @ApiProperty({ type: [ItineraryDayDto], description: 'Structured day-by-day itinerary' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ItineraryDayDto)
+  itineraryDays?: ItineraryDayDto[];
+
+  @ApiProperty({ type: [RouteWaypointDto], description: 'Route waypoints for trip route display' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RouteWaypointDto)
+  routeWaypoints?: RouteWaypointDto[];
+
+  @ApiProperty({ type: [DetailItemDto], description: 'Structured inclusions' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DetailItemDto)
+  includedItems?: DetailItemDto[];
+
+  @ApiProperty({ type: [DetailItemDto], description: 'Structured exclusions' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DetailItemDto)
+  notIncludedItems?: DetailItemDto[];
+
+  @ApiProperty({ type: [AdditionalInfoDto], description: 'Accommodation, transport, flight, luggage, and other useful information' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AdditionalInfoDto)
+  additionalInfo?: AdditionalInfoDto[];
+
+  @ApiProperty({ type: [TripFaqDto], description: 'Trip-specific FAQs' })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TripFaqDto)
+  tripFaqs?: TripFaqDto[];
+
+  @ApiProperty({
     example: '<p>Plan details here...</p>',
     description: 'Travel plan content in HTML or text format',
   })
@@ -337,6 +524,25 @@ export class UpdateFlagshipDto {
   @ValidateNested({ each: true })
   @Type(() => String)
   files?: Express.Multer.File[];
+
+  @ApiProperty({
+    type: [String],
+    description: 'Uploaded itinerary day images ordered by itinerary day index',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => String)
+  itineraryDayImages?: Express.Multer.File[];
+
+  @ApiProperty({
+    type: [Number],
+    description: 'Zero-based itinerary day indexes matching itineraryDayImages order',
+  })
+  @IsOptional()
+  @Transform(parseJsonArray)
+  @IsArray()
+  itineraryDayImageIndexes?: number[];
 
   @ApiProperty({
     type: [String],

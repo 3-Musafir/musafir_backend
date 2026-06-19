@@ -59,11 +59,11 @@ export class CreateFlagshipDto {
   @ApiProperty({
     example: 'flagship',
     description: 'Category of the trip',
-    enum: ['detox', 'flagship', 'adventure', 'student'],
+    enum: ['detox', 'flagship', 'adventure', 'student', 'international'],
   })
   @IsNotEmpty()
   @IsString()
-  @IsIn(['detox', 'flagship', 'adventure', 'student'])
+  @IsIn(['detox', 'flagship', 'adventure', 'student', 'international'])
   category: string;
 
   @ApiProperty({
@@ -77,4 +77,3 @@ export class CreateFlagshipDto {
   visibility: string;
 
 }
-

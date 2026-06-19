@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -43,6 +44,9 @@ export class FlagshipService {
     private readonly paymentModel: Model<Payment>,
     private readonly notificationService: NotificationService,
     private readonly userService: UserService,
+    @Optional()
+    @InjectModel('Rating')
+    private readonly ratingModel?: Model<any>,
   ) { }
 
   private generateContentVersion(): string {
@@ -60,6 +64,40 @@ export class FlagshipService {
     if (value === undefined || value === null) return 0;
     const parsed = Math.floor(Number(value) || 0);
     return Math.max(0, parsed);
+  }
+
+  private async getRatingAggregates(flagshipIds: unknown[]) {
+    const aggregates = new Map<string, { ratingAverage: number; ratingCount: number }>();
+    if (!this.ratingModel || !Array.isArray(flagshipIds) || flagshipIds.length === 0) {
+      return aggregates;
+    }
+
+    const objectIds = flagshipIds
+      .map((id) => String(id || ''))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    if (objectIds.length === 0) return aggregates;
+
+    const rows = await this.ratingModel.aggregate([
+      { $match: { flagshipId: { $in: objectIds } } },
+      {
+        $group: {
+          _id: '$flagshipId',
+          ratingAverage: { $avg: '$rating' },
+          ratingCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    rows.forEach((row: any) => {
+      aggregates.set(String(row._id), {
+        ratingAverage: Math.round(Number(row.ratingAverage || 0) * 10) / 10,
+        ratingCount: Number(row.ratingCount || 0),
+      });
+    });
+
+    return aggregates;
   }
 
   private normalizeDiscountInput(
@@ -587,10 +625,18 @@ export class FlagshipService {
       .sort(sort)
       .populate('created_By')
       .exec();
+    const ratingAggregates = await this.getRatingAggregates(
+      flagships.map((flagship) => (flagship as any)._id),
+    );
 
     const processedFlagships = await Promise.all(
       flagships.map(async (flagship) => {
-        const flagshipObj = flagship.toObject();
+        const flagshipObj = flagship.toObject() as any;
+        const ratingAggregate = ratingAggregates.get(String((flagship as any)._id));
+        if (ratingAggregate) {
+          flagshipObj.ratingAverage = ratingAggregate.ratingAverage;
+          flagshipObj.ratingCount = ratingAggregate.ratingCount;
+        }
         if (flagship.images && flagship.images.length > 0) {
           const imageUrls = await Promise.all(
             flagship.images.map(async (imageKey) => {
@@ -622,6 +668,13 @@ export class FlagshipService {
     }
 
     await this.ensureContentVersion(flagship);
+    const flagshipObj = flagship.toObject() as any;
+    const ratingAggregates = await this.getRatingAggregates([(flagship as any)._id]);
+    const ratingAggregate = ratingAggregates.get(String((flagship as any)._id));
+    if (ratingAggregate) {
+      flagshipObj.ratingAverage = ratingAggregate.ratingAverage;
+      flagshipObj.ratingCount = ratingAggregate.ratingCount;
+    }
 
     if (flagship.images && flagship.images.length > 0) {
       const imageUrls = await Promise.all(
@@ -629,16 +682,30 @@ export class FlagshipService {
           return await this.storageService.getSignedUrl(imageKey);
         }),
       );
-      flagship.images = imageUrls;
+      flagshipObj.images = imageUrls;
+    }
+
+    if (Array.isArray(flagshipObj.itineraryDays) && flagshipObj.itineraryDays.length > 0) {
+      flagshipObj.itineraryDays = await Promise.all(
+        flagshipObj.itineraryDays.map(async (day) => {
+          if (!day?.image || /^https?:\/\//i.test(day.image)) {
+            return day;
+          }
+          return {
+            ...day,
+            image: await this.storageService.getSignedUrl(day.image),
+          };
+        }),
+      );
     }
 
     if (flagship.detailedPlan) {
-      flagship.detailedPlan = await this.storageService.getSignedUrl(
+      flagshipObj.detailedPlan = await this.storageService.getSignedUrl(
         flagship.detailedPlan,
       );
     }
 
-    return flagship;
+    return flagshipObj as Flagship;
   }
 
   private async notifyNewFlagship(flagship: Flagship) {
@@ -753,6 +820,16 @@ export class FlagshipService {
       'mattressSplitEnabled',
       'mattressPriceDelta',
       'roomSharingPreference',
+      'summary',
+      'tripType',
+      'effortLevel',
+      'vibeScores',
+      'itineraryDays',
+      'routeWaypoints',
+      'includedItems',
+      'notIncludedItems',
+      'additionalInfo',
+      'tripFaqs',
       'tocs',
       'travelPlan',
       'locations',
@@ -847,6 +924,53 @@ export class FlagshipService {
         }
         throw new BadRequestException(
           `Failed to process file uploads: ${error.message}`,
+        );
+      }
+    }
+
+    if (updateDto.itineraryDayImages && updateDto.itineraryDayImages.length > 0) {
+      try {
+        const itineraryDays = Array.isArray(updateData['itineraryDays'])
+          ? [...updateData['itineraryDays']]
+          : Array.isArray(existingFlagship.itineraryDays)
+            ? [...(existingFlagship.itineraryDays as any[])]
+            : [];
+        const explicitIndexes = Array.isArray(updateDto.itineraryDayImageIndexes)
+          ? updateDto.itineraryDayImageIndexes.map((value) => Number(value))
+          : [];
+        const fallbackIndexes = itineraryDays
+          .map((day, dayIndex) => (!day?.image ? dayIndex : -1))
+          .filter((dayIndex) => dayIndex >= 0);
+
+        for (let index = 0; index < updateDto.itineraryDayImages.length; index += 1) {
+          const file = updateDto.itineraryDayImages[index];
+          const dayIndex = Number.isFinite(explicitIndexes[index])
+            ? explicitIndexes[index]
+            : fallbackIndexes[index];
+          if (dayIndex === undefined || !itineraryDays[dayIndex]) continue;
+
+          const webpBuffer = await sharp(file.buffer)
+            .webp({ quality: 80 })
+            .toBuffer();
+          const originalName = file.originalname.split('.')[0];
+          const fileKey = `flagship/${id}/itinerary-day-${dayIndex + 1}-${Date.now()}-${originalName}.webp`;
+
+          await this.storageService.uploadFile(
+            fileKey,
+            webpBuffer,
+            'image/webp',
+          );
+
+          itineraryDays[dayIndex] = {
+            ...itineraryDays[dayIndex],
+            image: fileKey,
+          };
+        }
+
+        updateData['itineraryDays'] = itineraryDays;
+      } catch (error) {
+        throw new BadRequestException(
+          `Failed to process itinerary day image uploads: ${error.message}`,
         );
       }
     }

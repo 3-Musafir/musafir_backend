@@ -134,6 +134,7 @@ export class FlagshipController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'files', maxCount: 10 },
+      { name: 'itineraryDayImages', maxCount: 30 },
       { name: 'detailedPlanDoc', maxCount: 1 },
     ])
   )
@@ -145,11 +146,14 @@ export class FlagshipController {
   async update(
     @Param('id') id: string,
     @Body() updateFlagshipDto: UpdateFlagshipDto,
-    @UploadedFiles() uploadedFiles: { files?: Express.Multer.File[], detailedPlanDoc?: Express.Multer.File[] },
+    @UploadedFiles() uploadedFiles: { files?: Express.Multer.File[], itineraryDayImages?: Express.Multer.File[], detailedPlanDoc?: Express.Multer.File[] },
   ) {
     if (uploadedFiles) {
       if (uploadedFiles.files && uploadedFiles.files.length > 0) {
         updateFlagshipDto.files = uploadedFiles.files;
+      }
+      if (uploadedFiles.itineraryDayImages && uploadedFiles.itineraryDayImages.length > 0) {
+        updateFlagshipDto.itineraryDayImages = uploadedFiles.itineraryDayImages;
       }
       if (uploadedFiles.detailedPlanDoc && uploadedFiles.detailedPlanDoc[0]) {
         updateFlagshipDto.detailedPlanDoc = uploadedFiles.detailedPlanDoc[0];

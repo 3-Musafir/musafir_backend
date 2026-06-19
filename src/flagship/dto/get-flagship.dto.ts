@@ -27,7 +27,7 @@ export class FlagshipFilterDto {
 
   @ApiPropertyOptional({
     description: 'Category',
-    enum: ['detox', 'flagship', 'adventure', 'student'],
+    enum: ['detox', 'flagship', 'adventure', 'student', 'international'],
   })
   @IsOptional()
   @IsString()

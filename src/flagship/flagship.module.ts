@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from 'src/storage/storageService';
 import { NotificationModule } from 'src/notifications/notification.module';
 import { UserModule } from 'src/user/user.module';
+import { RatingSchema } from 'src/Rating/schemas/rating.schema';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UserModule } from 'src/user/user.module';
       { name: 'User', schema: UserSchema },
       { name: 'Registration', schema: RegistrationSchema },
       { name: 'Payment', schema: PaymentSchema },
+      { name: 'Rating', schema: RatingSchema },
     ]),
     AuthModule,
     RegistrationModule,

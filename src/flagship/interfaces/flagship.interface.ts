@@ -14,6 +14,8 @@ export class Flagship {
   detailedPlan?: string;
   readonly updatedAt?: Date;
   readonly contentVersion?: string;
+  readonly ratingAverage?: number;
+  readonly ratingCount?: number;
 
   // Pricing
   readonly basePrice?: string;
@@ -88,6 +90,43 @@ export class Flagship {
   groupDiscountLockBy?: string;
 
   // New content fields
+  summary?: string;
+  tripType?: string;
+  effortLevel?: string;
+  vibeScores?: {
+    label: string;
+    score: number;
+  }[];
+  itineraryDays?: {
+    day: number;
+    title: string;
+    summary?: string;
+    image?: string;
+    imageTitle?: string;
+    imageAlt?: string;
+  }[];
+  routeWaypoints?: {
+    label: string;
+    description?: string;
+  }[];
+  includedItems?: {
+    label: string;
+    detail?: string;
+    icon?: string;
+  }[];
+  notIncludedItems?: {
+    label: string;
+    detail?: string;
+    icon?: string;
+  }[];
+  additionalInfo?: {
+    title: string;
+    body: string;
+  }[];
+  tripFaqs?: {
+    question: string;
+    answer: string;
+  }[];
   travelPlan?: string;
   tocs?: string;
 

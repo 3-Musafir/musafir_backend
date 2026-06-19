@@ -38,6 +38,59 @@ const RoomSharingPreferenceSchema = new Schema(
   { _id: false },
 );
 
+const VibeScoreSchema = new Schema(
+  {
+    label: { type: String, required: true },
+    score: { type: Number, required: true, min: 0, max: 5 },
+  },
+  { _id: false },
+);
+
+const ItineraryDaySchema = new Schema(
+  {
+    day: { type: Number, required: true },
+    title: { type: String, required: true },
+    summary: { type: String, required: false },
+    image: { type: String, required: false },
+    imageTitle: { type: String, required: false },
+    imageAlt: { type: String, required: false },
+  },
+  { _id: false },
+);
+
+const RouteWaypointSchema = new Schema(
+  {
+    label: { type: String, required: true },
+    description: { type: String, required: false },
+  },
+  { _id: false },
+);
+
+const DetailItemSchema = new Schema(
+  {
+    label: { type: String, required: true },
+    detail: { type: String, required: false },
+    icon: { type: String, required: false },
+  },
+  { _id: false },
+);
+
+const AdditionalInfoSchema = new Schema(
+  {
+    title: { type: String, required: true },
+    body: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const TripFaqSchema = new Schema(
+  {
+    question: { type: String, required: true },
+    answer: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const CitiesSeatSchema = new Schema(
   {
     city: { type: String, required: true },
@@ -96,7 +149,7 @@ export const FlagshipSchema = new Schema(
     category: {
       type: String,
       required: true,
-      enum: ['detox', 'flagship', 'adventure', 'student'],
+      enum: ['detox', 'flagship', 'adventure', 'student', 'international'],
     },
     visibility: {
       type: String,
@@ -141,6 +194,16 @@ export const FlagshipSchema = new Schema(
     roomSharingPreference: { type: [RoomSharingPreferenceSchema], required: false },
 
     // New content fields
+    summary: { type: String, required: false },
+    tripType: { type: String, required: false },
+    effortLevel: { type: String, required: false },
+    vibeScores: { type: [VibeScoreSchema], required: false, default: [] },
+    itineraryDays: { type: [ItineraryDaySchema], required: false, default: [] },
+    routeWaypoints: { type: [RouteWaypointSchema], required: false, default: [] },
+    includedItems: { type: [DetailItemSchema], required: false, default: [] },
+    notIncludedItems: { type: [DetailItemSchema], required: false, default: [] },
+    additionalInfo: { type: [AdditionalInfoSchema], required: false, default: [] },
+    tripFaqs: { type: [TripFaqSchema], required: false, default: [] },
     travelPlan: { type: String, required: false },
     tocs: { type: String, required: false },
     files: {
