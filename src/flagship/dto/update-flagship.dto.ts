@@ -9,7 +9,7 @@ import {
   IsISO8601,
   IsBoolean,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 class LocationDto {
@@ -73,7 +73,7 @@ class RoomSharingPreferenceDto {
   price: string;
 }
 
-const parseJsonArray = ({ value }) => {
+const parseJsonArrayValue = (value: unknown) => {
   if (value === undefined || value === null || value === '') return undefined;
   if (Array.isArray(value)) return value;
   if (typeof value === 'string') {
@@ -85,6 +85,13 @@ const parseJsonArray = ({ value }) => {
     }
   }
   return value;
+};
+
+const parseJsonArray = ({ value }) => parseJsonArrayValue(value);
+
+const parseJsonDtoArray = <T>(dtoClass: new () => T) => ({ value }) => {
+  const parsed = parseJsonArrayValue(value);
+  return Array.isArray(parsed) ? plainToInstance(dtoClass, parsed) : parsed;
 };
 
 class VibeScoreDto {
@@ -445,7 +452,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [VibeScoreDto], description: 'Trip fit scores shown to users' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(VibeScoreDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => VibeScoreDto)
@@ -453,7 +460,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [ItineraryDayDto], description: 'Structured day-by-day itinerary' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(ItineraryDayDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ItineraryDayDto)
@@ -461,7 +468,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [RouteWaypointDto], description: 'Route waypoints for trip route display' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(RouteWaypointDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RouteWaypointDto)
@@ -469,7 +476,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [DetailItemDto], description: 'Structured inclusions' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(DetailItemDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DetailItemDto)
@@ -477,7 +484,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [DetailItemDto], description: 'Structured exclusions' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(DetailItemDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DetailItemDto)
@@ -485,7 +492,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [AdditionalInfoDto], description: 'Accommodation, transport, flight, luggage, and other useful information' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(AdditionalInfoDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => AdditionalInfoDto)
@@ -493,7 +500,7 @@ export class UpdateFlagshipDto {
 
   @ApiProperty({ type: [TripFaqDto], description: 'Trip-specific FAQs' })
   @IsOptional()
-  @Transform(parseJsonArray)
+  @Transform(parseJsonDtoArray(TripFaqDto))
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TripFaqDto)
