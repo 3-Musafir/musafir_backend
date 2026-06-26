@@ -3,8 +3,12 @@ import { IsArray, IsBoolean, IsMongoId, IsNotEmpty, IsOptional, IsString, IsNumb
 
 export class CreateRegistrationDto {
     @IsMongoId()
-    @IsNotEmpty()
-    flagshipId: string;
+    @IsOptional()
+    flagshipId?: string;
+
+    @IsMongoId()
+    @IsOptional()
+    departureId?: string;
 
     @IsMongoId()
     @IsOptional()

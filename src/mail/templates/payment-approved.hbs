@@ -22,6 +22,16 @@
   <p>Your registration is now confirmed, and you're all set for your adventure! We'll keep you updated with trip details and any important information as the departure date approaches.</p>
 {{/if}}
 </br>
+{{#if whatsappGroupLink}}
+  <p><strong>Your trip group chat is ready.</strong></p>
+  <p>Join the WhatsApp group for confirmed updates, coordination, and travel-day notes:</p>
+  <p><a href="{{whatsappGroupLink}}">{{whatsappGroupLink}}</a></p>
+  {{#if departureGroupPageUrl}}
+    <p>You can also open your departure card here:</p>
+    <p><a href="{{departureGroupPageUrl}}">{{departureGroupPageUrl}}</a></p>
+  {{/if}}
+  </br>
+{{/if}}
 <p>If you have any questions about your trip or need assistance, please don't hesitate to reach out to our support team.</p>
 </br>
 <p>Best regards,</p>

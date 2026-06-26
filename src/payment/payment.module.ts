@@ -7,17 +7,17 @@ import { RefundRejectionReasonSchema } from 'src/payment/schema/refund-rejection
 import { BankAccountSchema } from './schema/bankAccount.schema';
 import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
-import { StorageService } from 'src/storage/storageService';
 import { UserSchema } from 'src/user/schemas/user.schema';
 import { UserModule } from '../user/user.module';
 import { FlagshipSchema } from 'src/flagship/schemas/flagship.schema';
-import { ConfigService } from '@nestjs/config';
 import { RefundSchema } from './schema/refund.schema';
 import { RegistrationSchema } from 'src/registration/schemas/registration.schema';
 import { MailModule } from 'src/mail/mail.module';
 import { NotificationModule } from 'src/notifications/notification.module';
 import { RefundSettlementModule } from 'src/refund-settlement/refund-settlement.module';
 import { WalletModule } from 'src/wallet/wallet.module';
+import { StorageModule } from 'src/storage/storage.module';
+import { DepartureSchema } from 'src/trip-series/schemas/departure.schema';
 
 @Module({
   imports: [
@@ -30,6 +30,7 @@ import { WalletModule } from 'src/wallet/wallet.module';
       { name: 'Flagship', schema: FlagshipSchema },
       { name: 'Refund', schema: RefundSchema },
       { name: 'Registration', schema: RegistrationSchema },
+      { name: 'Departure', schema: DepartureSchema },
     ]),
     AuthModule,
     UserModule,
@@ -37,9 +38,10 @@ import { WalletModule } from 'src/wallet/wallet.module';
     NotificationModule,
     RefundSettlementModule,
     WalletModule,
+    StorageModule,
   ],
   controllers: [PaymentController],
-  providers: [PaymentService, StorageService, ConfigService],
+  providers: [PaymentService],
   exports: [PaymentService],
 })
 export class PaymentModule {}

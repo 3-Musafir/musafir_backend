@@ -37,12 +37,26 @@ describe('PaymentService createPayment validations', () => {
       }),
     } as any;
 
+    const flagshipModel = {
+      findById: jest.fn().mockReturnValue({
+        select: () => ({
+          lean: () => ({
+            exec: async () => ({ _id: 'flagship-1', tripName: 'Test Trip' }),
+          }),
+        }),
+      }),
+    } as any;
+
     const service = new PaymentService(
       paymentModel as any,
       userModel as any,
       null as any,
-      null as any,
+      flagshipModel as any,
       registrationModel as any,
+      null as any,
+      null as any,
+      null as any,
+      null as any,
       null as any,
       null as any,
       null as any,

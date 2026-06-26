@@ -6,8 +6,7 @@ import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { AuthModule } from '../auth/auth.module';
 import { MailModule } from '../mail/mail.module';
-import { StorageService } from 'src/storage/storageService';
-import { ConfigService } from '@nestjs/config';
+import { StorageModule } from 'src/storage/storage.module';
 import { NotificationModule } from 'src/notifications/notification.module';
 import { WalletModule } from 'src/wallet/wallet.module';
 
@@ -21,9 +20,10 @@ import { WalletModule } from 'src/wallet/wallet.module';
     MailModule,
     NotificationModule,
     WalletModule,
+    StorageModule,
   ],
   controllers: [UserController],
-  providers: [UserService, StorageService, ConfigService],
+  providers: [UserService],
   exports: [UserService],
 })
 export class UserModule { }

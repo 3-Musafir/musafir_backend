@@ -8,13 +8,13 @@ import { AuthModule } from '../auth/auth.module';
 import { RegistrationModule } from '../registration/registration.module';
 import { MailModule } from '../mail/mail.module';
 import { UserSchema } from 'src/user/schemas/user.schema';
-import { RegistrationSchema } from './schemas/registration.schema';
+import { RegistrationSchema } from 'src/registration/schemas/registration.schema';
 import { PaymentSchema } from 'src/payment/schema/payment.schema';
-import { ConfigService } from '@nestjs/config';
-import { StorageService } from 'src/storage/storageService';
+import { StorageModule } from 'src/storage/storage.module';
 import { NotificationModule } from 'src/notifications/notification.module';
 import { UserModule } from 'src/user/user.module';
 import { RatingSchema } from 'src/Rating/schemas/rating.schema';
+import { DepartureSchema } from 'src/trip-series/schemas/departure.schema';
 
 @Module({
   imports: [
@@ -24,14 +24,16 @@ import { RatingSchema } from 'src/Rating/schemas/rating.schema';
       { name: 'Registration', schema: RegistrationSchema },
       { name: 'Payment', schema: PaymentSchema },
       { name: 'Rating', schema: RatingSchema },
+      { name: 'Departure', schema: DepartureSchema },
     ]),
     AuthModule,
     RegistrationModule,
     MailModule,
     NotificationModule,
     UserModule,
+    StorageModule,
   ],
   controllers: [FlagshipController, FlagshipAdminController],
-  providers: [FlagshipService, StorageService, ConfigService],
+  providers: [FlagshipService],
 })
 export class FlagshipModule { }

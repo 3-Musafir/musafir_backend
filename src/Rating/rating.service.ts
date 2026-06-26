@@ -15,8 +15,23 @@ export class RatingService {
     @InjectModel('Rating') private readonly ratingModel: Model<Rating>,
   ) { }
 
-  async createRating(rating: number, review: string, registrationId: string, userId: string, flagshipId: string): Promise<string> {
-    const newRating = new this.ratingModel({ rating, review, registrationId, userId, flagshipId });
+  async createRating(
+    rating: number,
+    review: string,
+    registrationId: string,
+    userId: string,
+    flagshipId: string,
+    context?: { tripSeriesId?: string; departureId?: string },
+  ): Promise<string> {
+    const newRating = new this.ratingModel({
+      rating,
+      review,
+      registrationId,
+      userId,
+      flagshipId,
+      tripSeriesId: context?.tripSeriesId,
+      departureId: context?.departureId,
+    });
     const savedRating = await newRating.save();
     return savedRating._id;
   }

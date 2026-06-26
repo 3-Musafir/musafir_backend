@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import sharp from 'sharp';
+import { optimizeImageToWebp } from 'src/common/image-optimizer';
 import { StorageService } from 'src/storage/storageService';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import {
@@ -56,10 +56,11 @@ export class CompanyProfileService {
 
     if (logo) {
       try {
-        const optimizedBuffer = await sharp(logo.buffer)
-          .resize(400, 400, { fit: 'inside' })
-          .webp({ quality: 85 })
-          .toBuffer();
+        const optimizedBuffer = await optimizeImageToWebp(logo.buffer, {
+          ...logo,
+          quality: 85,
+          resize: { width: 400, height: 400, fit: 'inside' },
+        });
 
         const fileKey = `company-profile/logo-${Date.now()}.webp`;
         await this.storageService.uploadFile(fileKey, optimizedBuffer, 'image/webp');

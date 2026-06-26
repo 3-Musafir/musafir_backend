@@ -301,7 +301,7 @@ export class MailService {
     amount: number,
     tripName: string,
     paymentDate: Date,
-    options?: { remainingDue?: number; paymentUrl?: string }
+    options?: { remainingDue?: number; paymentUrl?: string; whatsappGroupLink?: string; departureGroupPageUrl?: string }
   ) {
     try {
       await this.sendMail(
@@ -319,6 +319,8 @@ export class MailService {
           }),
           remainingDue: options?.remainingDue,
           paymentUrl: options?.paymentUrl,
+          whatsappGroupLink: options?.whatsappGroupLink,
+          departureGroupPageUrl: options?.departureGroupPageUrl,
         },
       );
       return true;
@@ -420,6 +422,7 @@ export class MailService {
   async sendAdminRegistrationNotification(context: {
     registrationId: string;
     flagshipId: string;
+    departureId?: string;
     flagshipName: string;
     userName: string;
     userEmail?: string;

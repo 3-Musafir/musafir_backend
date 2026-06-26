@@ -10,11 +10,12 @@ import { Model } from 'mongoose';
 import { CreateRegistrationDto } from './dto/create-registration.dto';
 import { Registration } from './interfaces/registration.interface';
 import { User } from 'src/user/interfaces/user.interface';
-import { Payment } from 'src/payment/interface/payment.interface';
+import { BankAccount, Payment } from 'src/payment/interface/payment.interface';
 import { MailService } from 'src/mail/mail.service';
 import mongoose from 'mongoose';
 import { StorageService } from 'src/storage/storageService';
 import { NotificationService } from 'src/notifications/notification.service';
+import { TripSeriesService } from 'src/trip-series/trip-series.service';
 import { REFUND_POLICY_LINK } from 'src/payment/refund-policy.util';
 import { resolveSeatBucket, getSeatCounterUpdate, getRemainingSeatsForBucket } from 'src/flagship/seat-utils';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
@@ -57,9 +58,12 @@ export class RegistrationService {
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Payment') private readonly paymentModel: Model<Payment>,
     @InjectModel('Flagship') private readonly flagshipModel: Model<any>,
+    @InjectModel('Departure') private readonly departureModel: Model<any>,
+    @InjectModel('BankAccount') private readonly bankAccountModel: Model<BankAccount>,
     private readonly storageService: StorageService,
     private readonly mailService: MailService,
     private readonly notificationService: NotificationService,
+    private readonly tripSeriesService: TripSeriesService,
   ) { }
 
   private async syncCompletedRegistrationsForUser(userId: string): Promise<void> {
@@ -83,6 +87,13 @@ export class RegistrationService {
         { _id: { $in: toCompleteIds } },
         { $set: { completedAt: now } },
       );
+      try {
+        await this.tripSeriesService.sendReviewInvitationsForRegistrations(
+          toCompleteIds.map((id) => String(id)),
+        );
+      } catch (error) {
+        this.logger.error('Failed to send automatic review invitations', error?.stack || error);
+      }
     }
   }
 
@@ -126,6 +137,62 @@ export class RegistrationService {
     const path = `/flagship/flagship-requirement?id=${flagshipId}&fromDetailsPage=true`;
     const base = process.env.FRONTEND_URL?.trim();
     return base ? `${base}${path}` : path;
+  }
+
+  private async resolveBookingTarget(
+    registration: CreateRegistrationDto,
+    options: { enforceBookable?: boolean } = { enforceBookable: true },
+  ): Promise<{
+    flagshipId: string;
+    departure?: any;
+  }> {
+    if (registration.departureId) {
+      const departure: any = await this.departureModel
+        .findById(registration.departureId)
+        .select('_id legacyFlagshipId status visibility startDate totalCapacity confirmedFemaleCount confirmedMaleCount')
+        .lean()
+        .exec();
+      if (!departure) {
+        throw new NotFoundException(`Departure with ID ${registration.departureId} not found`);
+      }
+      if (!departure.legacyFlagshipId) {
+        throw new BadRequestException({
+          code: 'departure_not_bookable',
+          message: 'Departure is not connected to a bookable trip.',
+        });
+      }
+      if (options.enforceBookable !== false) {
+        const confirmed =
+          Number(departure.confirmedFemaleCount || 0) +
+          Number(departure.confirmedMaleCount || 0);
+        const available = Math.max(0, Number(departure.totalCapacity || 0) - confirmed);
+        const isBookable =
+          departure.visibility === 'public' &&
+          ['open', 'filling_fast', 'waitlist'].includes(String(departure.status)) &&
+          new Date(departure.startDate).getTime() >= Date.now() &&
+          (departure.status === 'waitlist' || available > 0);
+
+        if (!isBookable) {
+          throw new BadRequestException({
+            code: 'departure_not_bookable',
+            message: 'This departure is not open for booking.',
+          });
+        }
+      }
+      return {
+        flagshipId: String(departure.legacyFlagshipId),
+        departure,
+      };
+    }
+
+    if (!registration.flagshipId) {
+      throw new BadRequestException({
+        code: 'booking_target_required',
+        message: 'Either flagshipId or departureId is required.',
+      });
+    }
+
+    return { flagshipId: String(registration.flagshipId) };
   }
 
   private async upsertLinkedContact(
@@ -662,6 +729,45 @@ export class RegistrationService {
       paidAmount,
       isFullyPaid: amountDue <= 0,
     };
+  }
+
+  private splitSelectedBankIds(value?: string): string[] {
+    return (value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  private async getSelectedPaymentBankAccounts(registration: any) {
+    const departureSelectedBank =
+      typeof registration?.departureId === 'object'
+        ? (registration.departureId as any)?.selectedBank
+        : undefined;
+    const flagshipSelectedBank =
+      typeof registration?.flagship === 'object'
+        ? (registration.flagship as any)?.selectedBank
+        : undefined;
+    const selectedBankIds = this.splitSelectedBankIds(departureSelectedBank || flagshipSelectedBank);
+    const validObjectIds = selectedBankIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    if (!validObjectIds.length) return [];
+
+    const accounts = await this.bankAccountModel
+      .find({ _id: { $in: validObjectIds } })
+      .select('_id bankName accountNumber IBAN')
+      .lean()
+      .exec();
+    const byId = new Map(accounts.map((account: any) => [String(account._id), account]));
+
+    return validObjectIds
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((account: any) => ({
+        _id: String(account._id),
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+        IBAN: account.IBAN,
+      }));
   }
 
   private mergeLinkedContacts(
@@ -1234,23 +1340,34 @@ export class RegistrationService {
     };
   }
 
+  async checkExistingDepartureRegistration(departureId: string, userId: string) {
+    const target = await this.resolveBookingTarget(
+      { departureId } as CreateRegistrationDto,
+      { enforceBookable: false },
+    );
+    return this.checkExistingRegistration(target.flagshipId, userId);
+  }
+
   async createRegistration(registration: CreateRegistrationDto, userId: string): Promise<CreateRegistrationResult> {
-    this.logger.log(`Creating registration: userId=${userId}, flagshipId=${(registration as any)?.flagshipId || (registration as any)?.flagship}, tripType=${(registration as any)?.tripType}`);
+    this.logger.log(`Creating registration: userId=${userId}, flagshipId=${(registration as any)?.flagshipId || (registration as any)?.flagship}, departureId=${(registration as any)?.departureId}, tripType=${(registration as any)?.tripType}`);
     try {
+      const target = await this.resolveBookingTarget(registration);
+      registration.flagshipId = target.flagshipId;
+
       const user = await this.userModel.findById(userId);
       if (!user) {
         throw new NotFoundException(`User with ID ${userId} not found`);
       }
 
-      const flagship = await this.flagshipModel.findById(registration.flagshipId);
+      const flagship = await this.flagshipModel.findById(target.flagshipId);
       if (!flagship) {
-        throw new NotFoundException(`Flagship with ID ${registration.flagshipId} not found`);
+        throw new NotFoundException(`Flagship with ID ${target.flagshipId} not found`);
       }
 
       const existing = await this.registrationModel
         .findOne({
           userId,
-          flagship: registration.flagshipId,
+          flagship: target.flagshipId,
           cancelledAt: { $exists: false },
           refundStatus: { $ne: 'refunded' },
         })
@@ -1300,7 +1417,7 @@ export class RegistrationService {
       if (userEmail) {
         const pendingInvite = await this.registrationModel
           .findOne({
-            flagship: registration.flagshipId,
+            flagship: target.flagshipId,
             'linkedContacts.email': userEmail,
             'linkedContacts.status': { $in: ['pending', 'invited'] },
             cancelledAt: { $exists: false },
@@ -1353,7 +1470,7 @@ export class RegistrationService {
         waitlistOfferStatus: 'none',
         userId: userId,
         user: user,
-        flagship: new mongoose.Types.ObjectId(registration.flagshipId)
+        flagship: new mongoose.Types.ObjectId(target.flagshipId)
       });
 
       const createdRegistration = await newRegistration.save();
@@ -1361,7 +1478,7 @@ export class RegistrationService {
       const duplicate = await this.registrationModel
         .findOne({
           userId,
-          flagship: registration.flagshipId,
+          flagship: target.flagshipId,
           _id: { $ne: createdRegistration._id },
           cancelledAt: { $exists: false },
           refundStatus: { $ne: 'refunded' },
@@ -1436,7 +1553,8 @@ export class RegistrationService {
 
         await this.mailService.sendAdminRegistrationNotification({
           registrationId: String(createdRegistration._id),
-          flagshipId: String(registration.flagshipId),
+          flagshipId: String(target.flagshipId),
+          departureId: registration.departureId,
           flagshipName: regFlagship?.tripName,
           userName: regUser?.fullName || 'Musafir',
           userEmail: regUser?.email,
@@ -1508,6 +1626,7 @@ export class RegistrationService {
         ],
       })
         .populate('flagshipId')
+        .populate('departureId')
         .populate('ratingId')
         .exec();
     } catch (error) {
@@ -1534,6 +1653,7 @@ export class RegistrationService {
           path: 'flagship',
           match: { endDate: { $gte: now } },
         })
+        .populate('departureId')
         .populate({
           path: 'paymentId',
           select: 'status amount paymentType discount createdAt',
@@ -1577,6 +1697,7 @@ export class RegistrationService {
 
       const registration = await this.registrationModel.findById(registrationId)
         .populate('flagship')
+        .populate('departureId')
         .populate('user')
         .populate({
           path: 'paymentId',
@@ -1609,6 +1730,7 @@ export class RegistrationService {
         ? (registration as any).toObject()
         : registration;
       plain.paymentSummary = this.buildPaymentSummary(plain);
+      plain.paymentBankAccounts = await this.getSelectedPaymentBankAccounts(plain);
       return plain;
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
@@ -1669,6 +1791,17 @@ export class RegistrationService {
       inviterRegistrationId: String(pendingInvite._id),
       ...status,
     };
+  }
+
+  async getPendingGroupInviteByDeparture(
+    departureId: string,
+    user: User,
+  ): Promise<PendingGroupInviteDto | null> {
+    const target = await this.resolveBookingTarget(
+      { departureId } as CreateRegistrationDto,
+      { enforceBookable: false },
+    );
+    return this.getPendingGroupInvite(target.flagshipId, user);
   }
 
   async cancelSeat(registrationId: string, user: User) {
@@ -2006,9 +2139,13 @@ export class RegistrationService {
         refundStatus: { $ne: 'refunded' },
       })
       .select(
-        '_id user joiningFromCity amountDue attendanceStatus settlementStatus hasApprovedPayment cancelledAt refundStatus latestPaymentStatus',
+        '_id user departureId joiningFromCity amountDue attendanceStatus settlementStatus hasApprovedPayment cancelledAt refundStatus latestPaymentStatus',
       )
       .populate({ path: 'user', select: 'fullName email city' })
+      .populate({
+        path: 'departureId',
+        select: '_id tripSeriesId legacyFlagshipId startDate endDate durationDays durationNights departureCities status visibility',
+      })
       .lean()
       .exec();
 
@@ -2036,6 +2173,7 @@ export class RegistrationService {
         name: reg.user?.fullName || '',
         email: reg.user?.email || '',
         city: reg.joiningFromCity || reg.user?.city || '',
+        departure: reg.departureId || null,
         amountDue,
         attendanceStatus: reg.attendanceStatus || 'unknown',
         settlementStatus,

@@ -21,7 +21,7 @@ import { RegistrationService } from 'src/registration/registration.service';
 import { MailService } from 'src/mail/mail.service';
 import { successResponse, errorResponse } from '../constants/response';
 import { StorageService } from 'src/storage/storageService';
-import sharp from 'sharp';
+import { optimizeImageToWebp } from 'src/common/image-optimizer';
 import { NotificationService } from 'src/notifications/notification.service';
 import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { RegistrationStatus } from 'src/constants/registration-status.enum';
@@ -47,6 +47,9 @@ export class FlagshipService {
     @Optional()
     @InjectModel('Rating')
     private readonly ratingModel?: Model<any>,
+    @Optional()
+    @InjectModel('Departure')
+    private readonly departureModel?: Model<any>,
   ) { }
 
   private generateContentVersion(): string {
@@ -64,6 +67,59 @@ export class FlagshipService {
     if (value === undefined || value === null) return 0;
     const parsed = Math.floor(Number(value) || 0);
     return Math.max(0, parsed);
+  }
+
+  private readonly departureSelect =
+    '_id tripSeriesId legacyFlagshipId startDate endDate durationDays durationNights departureCities status visibility basePrice';
+
+  private registrationDepartureLookupStages(): any[] {
+    return [
+      {
+        $lookup: {
+          from: 'departures',
+          localField: 'departureId',
+          foreignField: '_id',
+          as: 'departureDoc',
+        },
+      },
+      {
+        $unwind: {
+          path: '$departureDoc',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          departureId: {
+            $ifNull: ['$departureDoc', '$departureId'],
+          },
+        },
+      },
+      {
+        $project: {
+          departureDoc: 0,
+        },
+      },
+    ];
+  }
+
+  private paymentRegistrationDepartureLookupStages(): any[] {
+    return [
+      {
+        $lookup: {
+          from: 'departures',
+          localField: 'registration.departureId',
+          foreignField: '_id',
+          as: 'registration_departure',
+        },
+      },
+      {
+        $unwind: {
+          path: '$registration_departure',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ];
   }
 
   private async getRatingAggregates(flagshipIds: unknown[]) {
@@ -896,9 +952,10 @@ export class FlagshipService {
 
         for (const file of updateDto.files) {
           try {
-            const webpBuffer = await sharp(file.buffer)
-              .webp({ quality: 80 })
-              .toBuffer();
+            const webpBuffer = await optimizeImageToWebp(file.buffer, {
+              ...file,
+              quality: 80,
+            });
 
             const originalName = file.originalname.split('.')[0];
             const fileKey = `flagship/${id}/${Date.now()}-${originalName}.webp`;
@@ -949,9 +1006,10 @@ export class FlagshipService {
             : fallbackIndexes[index];
           if (dayIndex === undefined || !itineraryDays[dayIndex]) continue;
 
-          const webpBuffer = await sharp(file.buffer)
-            .webp({ quality: 80 })
-            .toBuffer();
+          const webpBuffer = await optimizeImageToWebp(file.buffer, {
+            ...file,
+            quality: 80,
+          });
           const originalName = file.originalname.split('.')[0];
           const fileKey = `flagship/${id}/itinerary-day-${dayIndex + 1}-${Date.now()}-${originalName}.webp`;
 
@@ -1180,7 +1238,7 @@ export class FlagshipService {
       });
     }
 
-    pipeline.push({ $sort: { createdAt: -1 } });
+    pipeline.push(...this.registrationDepartureLookupStages(), { $sort: { createdAt: -1 } });
     if (skip !== undefined) {
       pipeline.push({ $skip: skip });
     }
@@ -1226,6 +1284,7 @@ export class FlagshipService {
           },
         },
       },
+      ...this.registrationDepartureLookupStages(),
       { $sort: { createdAt: -1 } },
     ];
 
@@ -1293,6 +1352,7 @@ export class FlagshipService {
           preserveNullAndEmptyArrays: true,
         },
       },
+      ...this.paymentRegistrationDepartureLookupStages(),
       {
         $addFields: {
           registration: {
@@ -1302,6 +1362,9 @@ export class FlagshipService {
                 user: {
                   $ifNull: ['$registration_user', '$registration.user'],
                 },
+                departureId: {
+                  $ifNull: ['$registration_departure', '$registration.departureId'],
+                },
               },
             ],
           },
@@ -1310,6 +1373,7 @@ export class FlagshipService {
       {
         $project: {
           registration_user: 0,
+          registration_departure: 0,
         },
       },
       { $sort: { createdAt: -1 } },
@@ -1352,6 +1416,10 @@ export class FlagshipService {
         model: 'User',
         select: '_id fullName city verification profileImg',
       })
+      .populate({
+        path: 'departureId',
+        select: this.departureSelect,
+      })
       .lean();
 
     if (limit) query.limit(limit);
@@ -1392,6 +1460,7 @@ export class FlagshipService {
     const registration = await this.registerationModel
       .findOne({ _id: id })
       .populate({ path: 'user', model: 'User' })
+      .populate({ path: 'departureId', select: this.departureSelect })
       .exec();
 
     if (!registration) {

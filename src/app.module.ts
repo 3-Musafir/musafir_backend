@@ -19,6 +19,7 @@ import { NotificationModule } from './notifications/notification.module';
 import { CompanyProfileModule } from './company-profile/company-profile.module';
 import { WalletModule } from './wallet/wallet.module';
 import { WalletTopupModule } from './wallet-topup/wallet-topup.module';
+import { TripSeriesModule } from './trip-series/trip-series.module';
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -36,6 +37,7 @@ if (!mongoUri) {
     FlagshipModule,
     RegistrationModule,
     TripModule,
+    TripSeriesModule,
     FeedbackModule,
     FaqModule,
     RatingModule,

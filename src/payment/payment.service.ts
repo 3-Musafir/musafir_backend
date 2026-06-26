@@ -64,10 +64,39 @@ export class PaymentService {
     private readonly walletService: WalletService,
     private readonly refundSettlementService: RefundSettlementService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel('Departure')
+    private readonly departureModel?: Model<any>,
   ) { }
 
   private assertUserVerifiedForPayment(user: User): void {
     ensureUserVerifiedForPayment(user);
+  }
+
+  private async getRegistrationDeparture(registration: any) {
+    if (!this.departureModel) return null;
+
+    const departureId = registration?.departureId?.toString?.() || String(registration?.departureId || '');
+    if (departureId && Types.ObjectId.isValid(departureId)) {
+      return this.departureModel
+        .findById(departureId)
+        .populate('tripSeriesId', 'title slug')
+        .lean()
+        .exec();
+    }
+
+    const flagshipId =
+      registration?.flagship?._id?.toString?.() ||
+      registration?.flagship?.toString?.() ||
+      registration?.flagshipId?.toString?.() ||
+      String(registration?.flagshipId || '');
+
+    if (!flagshipId || !Types.ObjectId.isValid(flagshipId)) return null;
+
+    return this.departureModel
+      .findOne({ legacyFlagshipId: flagshipId })
+      .populate('tripSeriesId', 'title slug')
+      .lean()
+      .exec();
   }
 
   private isAdminUser(user?: User): boolean {
@@ -130,7 +159,10 @@ export class PaymentService {
   }
 
   private buildDiscountConfig(raw: any) {
-    const enabled = Boolean(raw?.enabled);
+    const deadline = raw?.deadline ? new Date(raw.deadline) : null;
+    const hasValidDeadline = !deadline || !Number.isNaN(deadline.getTime());
+    const expired = Boolean(hasValidDeadline && deadline && deadline.getTime() < Date.now());
+    const enabled = Boolean(raw?.enabled) && !expired;
     const amountSource = raw?.amount ?? raw?.value ?? raw?.budget;
     const amount = this.parseAmount(amountSource);
     const count = this.parseCount(raw?.count);
@@ -148,6 +180,8 @@ export class PaymentService {
       totalValue,
       remainingValue,
       remainingCount,
+      deadline,
+      expired,
     };
   }
 
@@ -1076,7 +1110,7 @@ export class PaymentService {
       .findById(id)
       .populate({
         path: 'registration',
-        populate: [{ path: 'user' }, { path: 'flagship' }],
+        populate: [{ path: 'user' }, { path: 'flagship' }, { path: 'departureId' }],
       })
       .populate('bankAccount')
       .exec();
@@ -3106,10 +3140,29 @@ export class PaymentService {
         const reg = populatedPayment.registration as any;
         const user = reg.user;
         const flagship = reg.flagship;
+        const departure: any = await this.getRegistrationDeparture(reg);
+        const tripSeries = departure?.tripSeriesId as any;
         const registrationId = reg?._id?.toString();
         const userId = user?._id ? String(user._id) : user?.toString?.();
-        const tripName = flagship?.tripName;
+        const tripName = flagship?.tripName || tripSeries?.title || 'your trip';
         const flagshipId = flagship?._id?.toString?.() ?? flagship?.toString?.();
+        const departureId = departure?._id?.toString?.();
+        const seriesSlug = tripSeries?.slug;
+        const whatsappGroupLink =
+          typeof departure?.whatsappGroupLink === 'string'
+            ? departure.whatsappGroupLink.trim()
+            : '';
+        const departureGroupPagePath = departureId
+          ? `/departures?${[
+              seriesSlug ? `series=${encodeURIComponent(seriesSlug)}` : '',
+              `departureId=${encodeURIComponent(departureId)}`,
+              'showGroup=1',
+            ].filter(Boolean).join('&')}`
+          : undefined;
+        const departureGroupPageUrl =
+          process.env.FRONTEND_URL && departureGroupPagePath
+            ? `${process.env.FRONTEND_URL}${departureGroupPagePath}`
+            : undefined;
         const paymentUrl =
           process.env.FRONTEND_URL && registrationId
             ? `${process.env.FRONTEND_URL}/musafir/payment/${registrationId}`
@@ -3125,11 +3178,17 @@ export class PaymentService {
             await this.notificationService.createForUser(userId, {
               title: 'Payment approved',
               message:
+                whatsappGroupLink
+                  ? `Your payment for ${tripName} was approved. Open your departure card to join the trip group.`
+                  :
                 typeof remainingDue === 'number' && remainingDue > 0
                   ? `Your payment for ${tripName} was approved. Remaining due: Rs.${remainingDue.toLocaleString()}.`
                   : `Your payment for ${tripName} was approved. Your seat is confirmed.`,
               type: 'payment',
               link:
+                whatsappGroupLink && departureGroupPagePath
+                  ? departureGroupPagePath
+                  :
                 typeof remainingDue === 'number' && remainingDue > 0 && registrationId
                   ? `/musafir/payment/${registrationId}`
                   : '/passport',
@@ -3137,6 +3196,9 @@ export class PaymentService {
                 paymentId: payment._id?.toString(),
                 registrationId: reg._id?.toString(),
                 flagshipId,
+                departureId,
+                tripSeriesId: tripSeries?._id?.toString?.(),
+                showGroupChat: Boolean(whatsappGroupLink),
                 amount: totalPaid,
                 remainingDue: typeof remainingDue === 'number' ? remainingDue : undefined,
               },
@@ -3158,6 +3220,8 @@ export class PaymentService {
                 remainingDue:
                   typeof remainingDue === 'number' ? remainingDue : undefined,
                 paymentUrl,
+                whatsappGroupLink: whatsappGroupLink || undefined,
+                departureGroupPageUrl,
               },
             );
           } catch (error) {
@@ -3433,7 +3497,7 @@ export class PaymentService {
       .find({ status: 'pendingApproval' })
       .populate({
         path: 'registration',
-        populate: [{ path: 'user' }, { path: 'payment' }],
+        populate: [{ path: 'user' }, { path: 'payment' }, { path: 'departureId' }],
       })
       .populate('bankAccount')
       .exec();
@@ -3444,7 +3508,7 @@ export class PaymentService {
       .find({ status: 'approved' })
       .populate({
         path: 'registration',
-        populate: [{ path: 'user' }, { path: 'payment' }],
+        populate: [{ path: 'user' }, { path: 'payment' }, { path: 'departureId' }],
       })
       .populate('bankAccount')
       .exec();

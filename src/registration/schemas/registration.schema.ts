@@ -10,6 +10,7 @@ function transformValue(doc, ret: { [key: string]: any }) {
 export const RegistrationSchema = new Schema(
   {
     flagshipId: { type: Schema.Types.ObjectId, ref: 'Flagship', required: true },
+    departureId: { type: Schema.Types.ObjectId, ref: 'Departure', required: false, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     userGender: { type: String, required: false },
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -113,6 +114,7 @@ export const RegistrationSchema = new Schema(
 );
 
 RegistrationSchema.index({ userId: 1, flagship: 1 });
+RegistrationSchema.index({ userId: 1, departureId: 1 });
 RegistrationSchema.index({ flagship: 1, status: 1, waitlistAt: 1 });
 RegistrationSchema.index({ userId: 1, flagship: 1, cancelledAt: 1 });
 RegistrationSchema.index({ flagship: 1, createdAt: -1 });

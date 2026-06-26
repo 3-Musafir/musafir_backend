@@ -113,6 +113,23 @@ export class RegistrationController {
     }
 
     @UseGuards(JwtAuthGuard)
+    @Get('/check-departure/:departureId')
+    async checkExistingDepartureRegistration(
+        @GetUser() user: User,
+        @Param('departureId') departureId: string,
+    ) {
+        const userId = user?._id?.toString();
+        if (!userId) {
+            throw new UnauthorizedException('Authentication required.');
+        }
+        return {
+            statusCode: 200,
+            message: 'Departure registration check complete',
+            data: await this.registrationService.checkExistingDepartureRegistration(departureId, userId),
+        };
+    }
+
+    @UseGuards(JwtAuthGuard)
     @Get('/getRegistrationById/:registrationId')
     async getRegistrationById(
         @GetUser() user: User,
@@ -151,6 +168,19 @@ export class RegistrationController {
         statusCode: 200,
         message: 'Pending group invite fetched successfully',
         data: await this.registrationService.getPendingGroupInvite(flagshipId, user),
+      };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('/pending-group-invite-by-departure/:departureId')
+    async getPendingGroupInviteByDeparture(
+      @GetUser() user: User,
+      @Param('departureId') departureId: string,
+    ) {
+      return {
+        statusCode: 200,
+        message: 'Pending group invite fetched successfully',
+        data: await this.registrationService.getPendingGroupInviteByDeparture(departureId, user),
       };
     }
 

@@ -18,6 +18,7 @@ export class Registration {
   readonly _id: string;
   legacyRegistrationKey?: string;
   readonly flagshipId: string | Flagship;
+  readonly departureId?: string;
   readonly userId: string;
   userGender?: 'male' | 'female' | 'other';
   readonly user: User;
