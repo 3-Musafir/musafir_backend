@@ -3,7 +3,7 @@ import { VerificationStatus } from 'src/constants/verification-status.enum';
 import { RegistrationStatus } from 'src/constants/registration-status.enum';
 
 describe('PaymentService createPayment validations', () => {
-  const createService = (amountDue: number) => {
+  const createService = (amountDue: number, hasPendingPayment = false) => {
     const registration = {
       _id: 'registration-1',
       userId: 'user-1',
@@ -20,6 +20,11 @@ describe('PaymentService createPayment validations', () => {
       sort: () => ({
         lean: () => ({
           exec: async () => null,
+        }),
+      }),
+      select: () => ({
+        lean: () => ({
+          exec: async () => (hasPendingPayment ? { _id: 'pending-1' } : null),
         }),
       }),
     });
@@ -81,6 +86,23 @@ describe('PaymentService createPayment validations', () => {
       ),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'no_payment_due' }),
+    });
+  });
+
+  it('rejects a second payment while one is pending approval', async () => {
+    const { service } = createService(100, true);
+    await expect(
+      service.createPayment(
+        {
+          registration: 'registration-1',
+          amount: 100,
+          paymentType: 'fullPayment',
+        } as any,
+        undefined,
+        undefined,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'payment_pending_approval' }),
     });
   });
 

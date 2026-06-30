@@ -170,3 +170,11 @@ PaymentSchema.index({ registration: 1, status: 1, createdAt: -1 });
 PaymentSchema.index({ resubmissionRoot: 1, createdAt: -1 });
 PaymentSchema.index({ resubmissionOf: 1 });
 PaymentSchema.index({ registration: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
+PaymentSchema.index(
+  { registration: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: 'pendingApproval' },
+    name: 'one_pending_payment_per_registration',
+  },
+);

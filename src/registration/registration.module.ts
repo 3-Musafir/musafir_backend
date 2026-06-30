@@ -12,6 +12,9 @@ import { StorageModule } from 'src/storage/storage.module';
 import { NotificationModule } from 'src/notifications/notification.module';
 import { DepartureSchema } from 'src/trip-series/schemas/departure.schema';
 import { TripSeriesModule } from 'src/trip-series/trip-series.module';
+import { PassportQueryService } from './passport-query.service';
+import { BriefAccessService } from './brief-access.service';
+import { PaymentModule } from 'src/payment/payment.module';
 
 @Module({
   imports: [
@@ -27,9 +30,10 @@ import { TripSeriesModule } from 'src/trip-series/trip-series.module';
     NotificationModule,
     StorageModule,
     TripSeriesModule,
+    PaymentModule,
   ],
   controllers: [RegistrationController],
-  providers: [RegistrationService],
-  exports: [RegistrationService],
+  providers: [RegistrationService, PassportQueryService, BriefAccessService],
+  exports: [RegistrationService, PassportQueryService, BriefAccessService],
 })
 export class RegistrationModule { }

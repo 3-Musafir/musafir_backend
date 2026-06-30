@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
     ApiTags,
+    ApiOkResponse,
 } from '@nestjs/swagger';
 import { RegistrationService } from './registration.service';
 import { CreateRegistrationDto } from './dto/create-registration.dto';
@@ -22,12 +23,20 @@ import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { AdminDeleteRegistrationDto } from './dto/admin-delete-registration.dto';
+import { PassportQueryService } from './passport-query.service';
+import { BriefAccessService } from './brief-access.service';
+import {
+    PassportRegistrationsResponseDto,
+    RegistrationBriefDto,
+} from './dto/passport-registration.dto';
 
 @ApiTags('Registration')
 @Controller('registration')
 export class RegistrationController {
     constructor(
         private readonly registrationService: RegistrationService,
+        private readonly passportQueryService: PassportQueryService,
+        private readonly briefAccessService: BriefAccessService,
     ) { }
 
     @Post('/')
@@ -93,6 +102,46 @@ export class RegistrationController {
             message: "Upcoming passport fetched successfully",
             data: await this.registrationService.getUpcomingPassport(userId)
         }
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('/passport/upcoming')
+    @ApiOkResponse({ type: PassportRegistrationsResponseDto })
+    async getNormalizedUpcomingPassport(@GetUser() user: User) {
+        const userId = user?._id?.toString();
+        if (!userId) throw new UnauthorizedException('Authentication required.');
+        const registrations = await this.registrationService.getUpcomingPassport(userId);
+        return {
+            statusCode: 200,
+            message: 'Upcoming passport fetched successfully',
+            data: await this.passportQueryService.normalize(registrations as unknown[], userId),
+        };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('/passport/past')
+    @ApiOkResponse({ type: PassportRegistrationsResponseDto })
+    async getNormalizedPastPassport(@GetUser() user: User) {
+        const userId = user?._id?.toString();
+        if (!userId) throw new UnauthorizedException('Authentication required.');
+        const registrations = await this.registrationService.getPastPassport(userId);
+        return {
+            statusCode: 200,
+            message: 'Past passport fetched successfully',
+            data: await this.passportQueryService.normalize(registrations as unknown[], userId),
+        };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('/:registrationId/brief')
+    @ApiOkResponse({ type: RegistrationBriefDto })
+    async getRegistrationBrief(
+        @GetUser() user: User,
+        @Param('registrationId') registrationId: string,
+    ) {
+        const userId = user?._id?.toString();
+        if (!userId) throw new UnauthorizedException('Authentication required.');
+        return this.briefAccessService.getBrief(registrationId, userId);
     }
 
     @UseGuards(JwtAuthGuard)

@@ -80,10 +80,18 @@ export class TripSeriesAdminController {
   }
 
   @Get('departures')
-  async listDepartures(@Query('window') window?: 'live' | 'upcoming') {
+  async listDepartures(@Query('window') window?: 'past' | 'live' | 'upcoming') {
     return successResponse(
       await this.tripSeriesService.getAdminDepartures(window),
       'Departures fetched successfully.',
+    );
+  }
+
+  @Get('departures/:departureId')
+  async getDeparture(@Param('departureId') departureId: string) {
+    return successResponse(
+      await this.tripSeriesService.getDeparture(departureId, { publicOnly: false }),
+      'Departure fetched successfully.',
     );
   }
 

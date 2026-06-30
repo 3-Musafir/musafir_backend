@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:csv": "ts-node -r tsconfig-paths/register src/util/csv-seeder.ts",
     "wallet:reconcile": "ts-node -r tsconfig-paths/register src/util/wallet-reconcile.ts",
+    "payments:audit-pending": "ts-node -r tsconfig-paths/register src/util/audit-pending-payments.ts",
     "reconcile:legacy": "ts-node -r tsconfig-paths/register src/util/reconcile-legacy-users.ts"
   },
   "dependencies": {

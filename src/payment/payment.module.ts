@@ -18,6 +18,7 @@ import { RefundSettlementModule } from 'src/refund-settlement/refund-settlement.
 import { WalletModule } from 'src/wallet/wallet.module';
 import { StorageModule } from 'src/storage/storage.module';
 import { DepartureSchema } from 'src/trip-series/schemas/departure.schema';
+import { PaymentEligibilityService } from './payment-eligibility.service';
 
 @Module({
   imports: [
@@ -41,7 +42,7 @@ import { DepartureSchema } from 'src/trip-series/schemas/departure.schema';
     StorageModule,
   ],
   controllers: [PaymentController],
-  providers: [PaymentService],
-  exports: [PaymentService],
+  providers: [PaymentService, PaymentEligibilityService],
+  exports: [PaymentService, PaymentEligibilityService],
 })
 export class PaymentModule {}

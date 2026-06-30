@@ -31,6 +31,10 @@ import { PaymentRejectionReason } from './interface/payment-rejection-reason.int
 import { RefundRejectionReason } from './interface/refund-rejection-reason.interface';
 import { MUSAFIR_DISCOUNT_MAX, calcMusafirDiscount } from 'src/discounts/musafir.constants';
 import { computeSettlementStatus } from 'src/registration/settlement-status.util';
+import {
+  PAYMENT_ELIGIBILITY_MESSAGES,
+  PaymentEligibilityService,
+} from './payment-eligibility.service';
 
 @Injectable()
 export class PaymentService {
@@ -66,6 +70,7 @@ export class PaymentService {
     @InjectConnection() private readonly connection: Connection,
     @InjectModel('Departure')
     private readonly departureModel?: Model<any>,
+    private readonly paymentEligibilityService: PaymentEligibilityService = new PaymentEligibilityService(),
   ) { }
 
   private assertUserVerifiedForPayment(user: User): void {
@@ -1636,28 +1641,6 @@ export class PaymentService {
     }
 
     const errors: Array<{ code: string; message: string }> = [];
-    const registrationStatus = String((registration as any)?.status || '');
-    if (![RegistrationStatus.PAYMENT, RegistrationStatus.CONFIRMED].includes(registrationStatus as RegistrationStatus)) {
-      errors.push({
-        message: registrationStatus === RegistrationStatus.WAITLISTED
-          ? 'You are currently waitlisted. You will be notified when a seat opens.'
-          : 'Registration is not eligible for payment yet.',
-        code: 'registration_not_payable',
-      });
-    }
-    if ((registration as any)?.cancelledAt) {
-      errors.push({
-        message: 'Cancelled registrations cannot accept payments.',
-        code: 'registration_cancelled',
-      });
-    }
-    const refundStatus = String((registration as any)?.refundStatus || 'none');
-    if (['pending', 'processing', 'refunded'].includes(refundStatus)) {
-      errors.push({
-        message: 'Refunded or refunding registrations cannot accept payments.',
-        code: 'registration_refund_locked',
-      });
-    }
 
     const pendingPayment = await this.paymentModel
       .findOne({ registration: payload.registration, status: 'pendingApproval' })
@@ -1715,10 +1698,24 @@ export class PaymentService {
       }
     }
 
-    if (amountDue <= 0) {
+    const eligibility = this.paymentEligibilityService.evaluate({
+      registrationStatus: String((registration as any)?.status || ''),
+      verificationStatus: (registration as any)?.user?.verification?.status,
+      amountDue,
+      hasPendingPayment: pendingApproval,
+      cancelledAt: (registration as any)?.cancelledAt,
+      refundStatus: (registration as any)?.refundStatus,
+    });
+    if (!eligibility.allowed && eligibility.reason) {
+      const legacyErrorCode: Partial<Record<typeof eligibility.reason, string>> = {
+        cancelled: 'registration_cancelled',
+        refund_locked: 'registration_refund_locked',
+        no_balance_due: 'no_payment_due',
+        waitlisted: 'registration_not_payable',
+      };
       errors.push({
-        message: 'No payment is due for this registration.',
-        code: 'no_payment_due',
+        code: legacyErrorCode[eligibility.reason] || eligibility.reason,
+        message: PAYMENT_ELIGIBILITY_MESSAGES[eligibility.reason],
       });
     }
 
@@ -1803,6 +1800,7 @@ export class PaymentService {
         requiresScreenshot,
         paymentMode,
         pendingApproval,
+        eligibility,
         errors,
       },
     };
@@ -2114,6 +2112,21 @@ export class PaymentService {
       });
     }
 
+    const existingPendingPayment = await this.paymentModel
+      .findOne({
+        registration: createPaymentDto.registration,
+        status: 'pendingApproval',
+      })
+      .select('_id')
+      .lean()
+      .exec();
+    if (existingPendingPayment) {
+      throw new BadRequestException({
+        message: PAYMENT_ELIGIBILITY_MESSAGES.payment_pending_approval,
+        code: 'payment_pending_approval',
+      });
+    }
+
     const isPartialPayment = createPaymentDto.paymentType === 'partialPayment';
     const effectiveDue = isPartialPayment
       ? this.computePartialDue(currentAmountDue)
@@ -2328,7 +2341,7 @@ export class PaymentService {
       await notifyAdminOnReupload(savedPayment);
 
       return savedPayment;
-    } catch (err) {
+    } catch (err: any) {
       if (savedPayment?._id && !skipDelete) {
         try {
           await this.paymentModel.deleteOne({ _id: savedPayment._id });
@@ -2337,6 +2350,12 @@ export class PaymentService {
         }
       }
 
+      if (err?.code === 11000) {
+        throw new BadRequestException({
+          message: PAYMENT_ELIGIBILITY_MESSAGES.payment_pending_approval,
+          code: 'payment_pending_approval',
+        });
+      }
       throw err;
     }
   }

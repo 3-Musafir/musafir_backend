@@ -760,17 +760,7 @@ export class TripSeriesService {
     } else if (shouldRestoreDepartures) {
       await this.departureModel
         .updateMany(
-          {
-            tripSeriesId: id,
-            $or: [
-              { hiddenBySeries: true },
-              {
-                hiddenBySeries: { $ne: false },
-                visibility: 'private',
-                status: { $in: PUBLIC_DEPARTURE_STATUSES },
-              },
-            ],
-          },
+          { tripSeriesId: id, hiddenBySeries: true },
           {
             $set: {
               visibility: 'public',
@@ -796,20 +786,23 @@ export class TripSeriesService {
     return Promise.all(series.map((item) => this.attachPublicSummary(item)));
   }
 
-  async getAdminDepartures(window?: 'live' | 'upcoming') {
+  async getAdminDepartures(window?: 'past' | 'live' | 'upcoming') {
     const now = new Date();
     const query: any = {};
 
-    if (window === 'live') {
+    if (window === 'past') {
+      query.endDate = { $lt: now };
+    } else if (window === 'live') {
       query.startDate = { $lte: now };
       query.endDate = { $gte: now };
     } else if (window === 'upcoming') {
       query.startDate = { $gt: now };
     }
 
+    const sort = window === 'past' ? { endDate: -1 as const } : { startDate: 1 as const };
     const departures = await this.departureModel
       .find(query)
-      .sort({ startDate: 1 })
+      .sort(sort)
       .populate('tripSeriesId', 'title slug destination category status images heroMedia gallery')
       .lean()
       .exec();
@@ -1062,6 +1055,13 @@ export class TripSeriesService {
     const updateData: any = { ...dto };
     delete updateData.contentVersion;
     if (dto.visibility) {
+      if (dto.visibility === 'public') {
+        const seriesId = dto.tripSeriesId || String(existing.tripSeriesId);
+        const series = await this.tripSeriesModel.findById(seriesId).select('status').lean().exec();
+        if (!series || series.status !== 'active') {
+          throw new BadRequestException('Activate the trip series before making this departure public.');
+        }
+      }
       updateData.hiddenBySeries = false;
     }
     if (dto.startDate || dto.endDate) {
